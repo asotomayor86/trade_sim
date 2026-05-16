@@ -1,0 +1,263 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum Direction {
+  LONG
+  SHORT
+}
+
+enum CloseReason {
+  MANUAL
+  TP
+  SL
+  ALERT
+}
+
+enum Timeframe {
+  ONE_HOUR
+  ONE_DAY
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  role         Role     @default(USER)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  analyses      Analysis[]
+  operations    Operation[]
+  alerts        Alert[]
+  drawings      Drawing[]
+  pushSubs      PushSubscription[]
+  notifications Notification[]
+
+  @@map("users")
+}
+
+model InvitationCode {
+  id        String    @id @default(cuid())
+  code      String    @unique @default(uuid())
+  note      String?
+  usedAt    DateTime?
+  usedBy    String?
+  createdAt DateTime  @default(now())
+  expiresAt DateTime?
+
+  @@map("invitation_codes")
+}
+
+model Ticker {
+  id                String  @id @default(cuid())
+  symbol            String  @unique
+  name              String
+  sector            String
+  active            Boolean @default(true)
+  spreadOverridePct Float?
+
+  quotes     Quote[]
+  candles    Candle[]
+  operations Operation[]
+  drawings   Drawing[]
+  alerts     Alert[]
+
+  @@map("tickers")
+}
+
+model Quote {
+  id        String   @id @default(cuid())
+  tickerId  String
+  bid       Float?
+  ask       Float?
+  last      Float
+  volume    BigInt?
+  timestamp DateTime
+  source    String
+
+  ticker Ticker @relation(fields: [tickerId], references: [id])
+
+  @@unique([tickerId, timestamp])
+  @@index([tickerId, timestamp(sort: Desc)])
+  @@map("quotes")
+}
+
+model Candle {
+  id        String    @id @default(cuid())
+  tickerId  String
+  timeframe Timeframe
+  open      Float
+  high      Float
+  low       Float
+  close     Float
+  volume    BigInt
+  timestamp DateTime
+  source    String
+
+  ticker Ticker @relation(fields: [tickerId], references: [id])
+
+  @@unique([tickerId, timeframe, timestamp])
+  @@index([tickerId, timeframe, timestamp(sort: Desc)])
+  @@map("candles")
+}
+
+model Analysis {
+  id         String   @id @default(cuid())
+  userId     String?
+  name       String
+  nameCustom Boolean  @default(false)
+  bias       String   @default("NEUTRAL")
+  isStandard Boolean  @default(false)
+  deleted    Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user       User?               @relation(fields: [userId], references: [id])
+  indicators AnalysisIndicator[]
+  rules      AnalysisRule[]
+  snapshots  AnalysisSnapshot[]
+  operations Operation[]
+  drawings   Drawing[]
+  alerts     Alert[]
+
+  @@map("analyses")
+}
+
+model AnalysisIndicator {
+  id         String  @id @default(cuid())
+  analysisId String
+  type       String
+  params     Json
+  color      String?
+  pane       Int     @default(0)
+
+  analysis Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  @@map("analysis_indicators")
+}
+
+model AnalysisRule {
+  id          String     @id @default(cuid())
+  analysisId  String
+  type        String
+  direction   Direction?
+  condition   Json
+  description String?
+
+  analysis Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  @@map("analysis_rules")
+}
+
+model AnalysisSnapshot {
+  id         String   @id @default(cuid())
+  analysisId String
+  data       Json
+  createdAt  DateTime @default(now())
+
+  analysis   Analysis    @relation(fields: [analysisId], references: [id])
+  operations Operation[]
+
+  @@map("analysis_snapshots")
+}
+
+model Drawing {
+  id         String   @id @default(cuid())
+  userId     String
+  tickerId   String
+  analysisId String?
+  data       Json
+  updatedAt  DateTime @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id])
+  ticker   Ticker    @relation(fields: [tickerId], references: [id])
+  analysis Analysis? @relation(fields: [analysisId], references: [id])
+
+  @@unique([userId, tickerId, analysisId])
+  @@map("drawings")
+}
+
+model Operation {
+  id            String       @id @default(cuid())
+  userId        String
+  tickerId      String
+  analysisId    String
+  snapshotId    String
+  direction     Direction
+  entryPrice    Float
+  exitPrice     Float?
+  quantity      Float
+  nominal       Float        @default(100)
+  spreadApplied Float
+  spreadSource  String
+  tpPrice       Float?
+  slPrice       Float?
+  pnl           Float?
+  pnlPct        Float?
+  closeReason   CloseReason?
+  openedAt      DateTime     @default(now())
+  closedAt      DateTime?
+
+  user     User             @relation(fields: [userId], references: [id])
+  ticker   Ticker           @relation(fields: [tickerId], references: [id])
+  analysis Analysis         @relation(fields: [analysisId], references: [id])
+  snapshot AnalysisSnapshot @relation(fields: [snapshotId], references: [id])
+
+  @@index([userId, closedAt])
+  @@map("operations")
+}
+
+model Alert {
+  id          String    @id @default(cuid())
+  userId      String
+  analysisId  String?
+  tickerId    String?
+  condition   Json
+  message     String?
+  active      Boolean   @default(true)
+  triggeredAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  user     User      @relation(fields: [userId], references: [id])
+  analysis Analysis? @relation(fields: [analysisId], references: [id])
+  ticker   Ticker?   @relation(fields: [tickerId], references: [id])
+
+  @@map("alerts")
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  keys      Json
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("push_subscriptions")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  body      String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("notifications")
+}

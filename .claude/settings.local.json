@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem \"c:\\\\Users\\\\Usuario\\\\Repositorios\\\\trade_sim\" -ErrorAction SilentlyContinue; if \\(-not \\(Test-Path \"c:\\\\Users\\\\Usuario\\\\Repositorios\\\\trade_sim\"\\)\\) { Write-Host \"Directory does not exist\" })",
+      "PowerShell(docker --version 2>&1)",
+      "Bash(xargs grep -l \"proxy\\\\|middleware\")",
+      "PowerShell(cd \"c:\\\\Users\\\\Usuario\\\\Repositorios\\\\trade_sim\"; Stop-Process -Name \"node\" -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; $env:NEXTAUTH_URL = \"http://localhost:3000\"; node --input-type=module --eval \"import\\('./node_modules/next/dist/bin/next.js'\\)\" -- dev 2>&1 | Select-Object -First 3)",
+      "PowerShell(Invoke-WebRequest -Uri \"http://localhost:3000\" -MaximumRedirection 0 -ErrorAction SilentlyContinue)",
+      "PowerShell($r = [System.Net.HttpWebRequest]::Create\\(\"http://localhost:3000/login\"\\); $r.AllowAutoRedirect = $false; try { $resp = $r.GetResponse\\(\\); \"Status: $\\($resp.StatusCode\\)\" } catch { $_.Exception.Message })"
+    ]
+  }
+}
