@@ -4,6 +4,8 @@ import { marketData } from "@/lib/market-data"
 import { computeSpread } from "@/lib/market-data/spread"
 import { checkTpSl, type Direction } from "@/lib/operations/pnl"
 import { closeOperation } from "@/actions/operations"
+import { evalAlertCondition, type AlertCondition } from "@/lib/alerts/evaluator"
+import { sendPushToUser } from "@/lib/push/sender"
 
 function authorized(req: NextRequest) {
   const auth = req.headers.get("authorization")
@@ -105,5 +107,49 @@ async function runRefresh() {
     }
   }
 
-  return NextResponse.json({ updated, symbols: symbols.length, tpSlTriggered: triggered })
+  // ── Evaluate price alerts ────────────────────────────────────────────────
+  const activeAlerts = await prisma.alert.findMany({
+    where: { active: true, tickerId: { not: null } },
+    select: {
+      id: true, userId: true, condition: true, message: true,
+      ticker: { select: { id: true, symbol: true } },
+    },
+  })
+
+  // Build a map: tickerId → latest last price
+  const priceMap = new Map<string, number>()
+  for (const ticker of tickers) {
+    const q = quotes.get(ticker.symbol)
+    if (q) priceMap.set(ticker.id, q.last)
+  }
+
+  let alertsTriggered = 0
+  for (const alert of activeAlerts) {
+    if (!alert.ticker) continue
+    const last = priceMap.get(alert.ticker.id)
+    if (last === undefined) continue
+
+    const cond = alert.condition as unknown as AlertCondition
+    if (!evalAlertCondition(cond, last)) continue
+
+    try {
+      await prisma.alert.update({
+        where: { id: alert.id },
+        data: { active: false, triggeredAt: now },
+      })
+
+      const symbol = alert.ticker.symbol
+      const title = `Alerta ${symbol}`
+      const body = alert.message ?? `${symbol} precio ${cond.op} $${cond.value} alcanzado ($${last.toFixed(2)})`
+
+      await prisma.notification.create({
+        data: { userId: alert.userId, type: "ALERT", title, body },
+      })
+
+      await sendPushToUser(alert.userId, title, body)
+      alertsTriggered++
+    } catch { /* continue with next alert */ }
+  }
+
+  return NextResponse.json({ updated, symbols: symbols.length, tpSlTriggered: triggered, alertsTriggered })
 }
