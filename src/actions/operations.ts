@@ -1,5 +1,6 @@
 "use server"
 
+import { z } from "zod"
 import { prisma } from "@/lib/db/prisma"
 import { requireAuth } from "@/lib/auth/session"
 import { revalidatePath } from "next/cache"
@@ -8,6 +9,14 @@ import { calcEntry, calcExit, type Direction } from "@/lib/operations/pnl"
 import { computeSpread } from "@/lib/market-data/spread"
 
 const NOMINAL = 100
+
+const openSchema = z.object({
+  tickerId:   z.string().cuid(),
+  analysisId: z.string().cuid(),
+  direction:  z.enum(["LONG", "SHORT"]),
+  tpPrice:    z.number().positive().nullable().optional(),
+  slPrice:    z.number().positive().nullable().optional(),
+})
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -38,28 +47,32 @@ export interface OpenOperationInput {
 }
 
 export async function openOperation(input: OpenOperationInput) {
+  const parsed = openSchema.safeParse(input)
+  if (!parsed.success) throw new Error("Datos de operación inválidos")
+
   const session = await requireAuth()
   const userId = session.user.id
 
-  const quote = await getLatestQuote(input.tickerId)
-  const { entryPrice, quantity, spreadApplied } = calcEntry(input.direction, quote, NOMINAL)
+  const quote = await getLatestQuote(parsed.data.tickerId)
+  const data = parsed.data
+  const { entryPrice, quantity, spreadApplied } = calcEntry(data.direction, quote, NOMINAL)
 
-  const snapshotId = await createAnalysisSnapshot(input.analysisId)
+  const snapshotId = await createAnalysisSnapshot(data.analysisId)
 
   const operation = await prisma.operation.create({
     data: {
       userId,
-      tickerId: input.tickerId,
-      analysisId: input.analysisId,
+      tickerId: data.tickerId,
+      analysisId: data.analysisId,
       snapshotId,
-      direction: input.direction,
+      direction: data.direction,
       entryPrice,
       quantity,
       nominal: NOMINAL,
       spreadApplied,
       spreadSource: quote.bid !== null ? "alpaca" : "simulated",
-      tpPrice: input.tpPrice ?? null,
-      slPrice: input.slPrice ?? null,
+      tpPrice: data.tpPrice ?? null,
+      slPrice: data.slPrice ?? null,
     },
   })
 

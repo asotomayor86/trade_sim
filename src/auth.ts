@@ -3,6 +3,7 @@ import Credentials from "next-auth/providers/credentials"
 import { z } from "zod"
 import { prisma } from "@/lib/db/prisma"
 import { verifyPassword } from "@/lib/auth/passwords"
+import { checkRateLimit } from "@/lib/auth/rateLimit"
 
 const loginSchema = z.object({
   username: z.string().min(1).max(50),
@@ -21,6 +22,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       async authorize(credentials) {
         const parsed = loginSchema.safeParse(credentials)
         if (!parsed.success) return null
+
+        // Rate limit: 5 intentos por username en 10 minutos
+        if (!checkRateLimit(`login:${parsed.data.username}`)) return null
 
         const user = await prisma.user.findUnique({
           where: { username: parsed.data.username },

@@ -1,9 +1,20 @@
 "use server"
 
+import { z } from "zod"
 import { prisma } from "@/lib/db/prisma"
 import { requireAuth } from "@/lib/auth/session"
 import { revalidatePath } from "next/cache"
 import type { AlertCondition } from "@/lib/alerts/evaluator"
+
+const alertSchema = z.object({
+  tickerId:  z.string().cuid(),
+  condition: z.object({
+    indicator: z.literal("PRICE"),
+    op:        z.enum([">=", "<=", ">", "<"]),
+    value:     z.number().positive(),
+  }),
+  message: z.string().max(200).optional(),
+})
 
 export interface CreateAlertInput {
   tickerId: string
@@ -12,14 +23,18 @@ export interface CreateAlertInput {
 }
 
 export async function createAlert(input: CreateAlertInput) {
+  const parsed = alertSchema.safeParse(input)
+  if (!parsed.success) throw new Error("Datos de alerta inválidos")
+
   const session = await requireAuth()
+  const data = parsed.data
 
   await prisma.alert.create({
     data: {
       userId: session.user.id,
-      tickerId: input.tickerId,
-      condition: input.condition as object,
-      message: input.message ?? null,
+      tickerId: data.tickerId,
+      condition: data.condition as object,
+      message: data.message ?? null,
       active: true,
     },
   })
