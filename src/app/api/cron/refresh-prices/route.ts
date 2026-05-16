@@ -13,6 +13,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
+  try {
+    return await runRefresh()
+  } catch (e) {
+    console.error("[cron/refresh-prices] fatal:", e)
+    return NextResponse.json({ error: String(e) }, { status: 500 })
+  }
+}
+
+async function runRefresh() {
   const tickers = await prisma.ticker.findMany({
     where: { active: true },
     select: { id: true, symbol: true, sector: true, spreadOverridePct: true },
