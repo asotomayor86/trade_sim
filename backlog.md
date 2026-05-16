@@ -330,6 +330,110 @@ F4 ✓ → F5 ✓ → F6 ✓ → F7 ✓ → F8 ✓ → F9 ✓
 
 ---
 
+## F10 — Gestión y perfil de usuarios
+
+> Objetivo: listado público de usuarios con métricas, ficha de perfil con 4 pestañas, acciones admin auditadas y cambio de contraseña propio.
+> Diseño completo en `architecture.md` §§14–16.
+
+### F10-01 · Migración de BD
+
+- [ ] Añadir `deactivatedAt DateTime?` y `lastPasswordResetAt DateTime?` al modelo `User`
+- [ ] Añadir enum `UserAuditAction` (RESET_PASSWORD, DEACTIVATE, REACTIVATE, ROLE_CHANGE)
+- [ ] Crear modelo `UserAuditLog` con relaciones actor/target, índices por `targetId` y `createdAt`
+- [ ] `npx prisma migrate dev --name f10_user_profiles`
+- [AC] Migración aplicada sin errores en local y producción
+
+### F10-02 · Listado de usuarios `/app/users`
+
+- [ ] RH `GET /api/users` — devuelve todos los usuarios con stats básicas (avgReturn, totalTrades); filtra inactivos si no es admin; ordenación por parámetro `sort` (ranking | alpha | ops | recent)
+- [ ] Página `/app/users` — server component; tabla con username, retorno medio (o "—" si < 5 ops), nº ops, estado
+- [ ] Usuarios con < 5 ops cerradas → "—" en métrica, aparecen al final ordenados alfabéticamente
+- [ ] Usuarios inactivos: ocultos para no-admins; visibles grisados al final para admins
+- [ ] Ordenaciones alternativas: toggle en cliente sin reload (o URL params)
+- [ ] Click en fila → navega a `/app/users/[id]`
+- [ ] Añadir "Usuarios" al sidebar (entre Ranking y Alertas)
+- [AC] Lista muestra métricas reales; inactivos ocultos para usuarios normales
+
+### F10-03 · Ficha de usuario — shell y pestaña Resumen
+
+- [ ] Página `/app/users/[id]` — server component; determina modo (yo / otro / admin)
+- [ ] `UserCard` — cabecera: username, fecha de alta, rol, badge activo/inactivo
+- [ ] `UserTabs` — shell de pestañas (Resumen / Histórico / Análisis / Ajustes)
+- [ ] RH `GET /api/users/[id]` — datos del perfil: user info + stats agregadas
+- [ ] Stats: avgReturn, winRate, nº ops totales, mejor op (max pnlPct), peor op (min pnlPct)
+- [ ] Operaciones abiertas actuales (tabla; siempre visibles)
+- [ ] RH `GET /api/users/[id]/stats` — agregados: retorno medio por sector, top 3 análisis más usados, top 5 tickers, distribución LONG/SHORT
+- [ ] `ResumenTab` — pinta stats + ops abiertas + indicadores promedio
+- [AC] Ficha carga < 500 ms; stats correctas para cualquier usuario
+
+### F10-04 · Ficha de usuario — pestaña Histórico (lazy + paginación cursor)
+
+- [ ] RH `GET /api/users/[id]/operations?status=closed&cursor=X&limit=20` — paginación cursor-based por `(closedAt DESC, id DESC)`; soporta filtros `sector` y `analysisId`
+- [ ] `HistoricoTab` — colapsado por defecto; toggle "Ver histórico" dispara primer fetch
+- [ ] Botón "Cargar más" (o scroll automático) para páginas siguientes
+- [ ] Filtros inline: sector y análisis (actualizan la query sin reiniciar paginación si el cursor se resetea)
+- [AC] Primer expand carga ≤ 20 ops en < 300 ms; el histórico completo no se carga si no se expande
+
+### F10-05 · Ficha de usuario — pestaña Análisis
+
+- [ ] Reutilizar datos de `GET /api/users/[id]/stats` (ya incluye top análisis)
+- [ ] `AnalisisTab` — tabla: análisis, nº ops, avgReturn, winRate; ordenado por nº ops DESC
+- [ ] Distribución sesgo (LONG vs SHORT) por análisis en barra o texto
+- [AC] Pestaña muestra métricas reales agrupadas por análisis
+
+### F10-06 · Ficha de usuario — pestaña Ajustes (modo "yo mismo")
+
+- [ ] SA `changeMyPassword(currentPassword, newPassword)` — verifica password actual con bcrypt antes de actualizar; Zod validation (min 8 chars)
+- [ ] Formulario de cambio de contraseña en `AjustesTab` (modo yo mismo)
+- [ ] Lista de dispositivos push suscritos (endpoints); botón "Revocar" por dispositivo
+- [ ] RH `DELETE /api/push/subscribe` existente — reutilizar para revocar dispositivos
+- [ ] Botón "Cerrar sesión" (llama `signOut()`)
+- [AC] Cambio de contraseña falla si la actual es incorrecta; push devices se listan y revocan
+
+### F10-07 · Acciones admin sobre usuarios
+
+- [ ] RH `POST /api/admin/users/[id]/reset-password` — genera contraseña aleatoria (16 chars), hashea, actualiza BD, registra audit log, devuelve plaintext **una sola vez** en la respuesta
+- [ ] RH `POST /api/admin/users/[id]/deactivate` — `active=false`, `deactivatedAt=now()`, audit log
+- [ ] RH `POST /api/admin/users/[id]/reactivate` — `active=true`, `deactivatedAt=null`, audit log
+- [ ] RH `POST /api/admin/users/[id]/role` — cambia rol en **transacción** con check `≥1 admin activo`; audit log con `metadata: { from, to }`
+- [ ] `AjustesTab` modo admin — formulario con las 4 acciones; contraseña temporal se muestra en modal una sola vez tras reset
+- [ ] Proteger todos los RH con `requireAdmin()`; verificar que `targetId !== actorId` en deactivate/role
+- [AC] Role change bloqueado si dejaría sistema sin admins; contraseña temporal mostrada solo en la respuesta inmediata
+
+### F10-08 · Log de auditoría admin
+
+- [ ] RH `GET /api/admin/audit-log?cursor=X&limit=50&targetId=Y` — log paginado cursor-based por `createdAt DESC`
+- [ ] Página `/admin/audit-log` — tabla: fecha, actor, target, acción, metadata relevante
+- [ ] Enlace en sidebar del admin (bajo sección Admin)
+- [AC] Toda acción de F10-07 aparece en el log; paginación funciona correctamente
+
+### F10-09 · Ajustes de navegación y UX
+
+- [ ] Añadir "Usuarios" al sidebar entre Ranking y Alertas
+- [ ] Desde ficha de usuario, click en nombre del análisis → navega a `/app/analyses/[id]`
+- [ ] Desde ficha de usuario, click en ticker → navega a `/app/chart/[symbol]`
+- [ ] Responsive: pestaña Histórico en móvil colapsa columnas secundarias
+- [AC] Navegación coherente con el resto de la app
+
+### F10-10 · Tests
+
+- [ ] Test unitario: regla `≥1 admin activo` (función pura que recibe lista de usuarios y valida)
+- [ ] Test unitario: `changeMyPassword` — verifica que falla con contraseña actual incorrecta
+- [ ] Test unitario: `computeRanking` con umbral de 5 ops (ya cubierto parcialmente en metrics.test.ts — ampliar)
+- [AC] Nuevos tests pasan sin errores; `npm test` sigue verde
+
+---
+
+## Orden de ejecución recomendado
+
+```
+F1 ✓ → F2-01..05 ✓ → F3-01 ✓ → F2-06 (parcial) → F3-02..03 ✓ →
+F4 ✓ → F5 ✓ → F6 ✓ → F7 ✓ → F8 ✓ → F9 ✓ →
+F10: F10-01 → F10-02 → F10-03 → F10-04 → F10-05 → F10-06 → F10-07 → F10-08 → F10-09 → F10-10
+```
+
+---
+
 ## Notas para futuros chats
 
 - Pasar `architecture.md` + este `backlog.md` al inicio de cada sesión
