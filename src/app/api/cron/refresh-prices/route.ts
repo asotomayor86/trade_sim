@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db/prisma"
 import { marketData } from "@/lib/market-data"
 import { computeSpread } from "@/lib/market-data/spread"
+import { checkTpSl, type Direction } from "@/lib/operations/pnl"
+import { closeOperation } from "@/actions/operations"
 
 function authorized(req: NextRequest) {
   const auth = req.headers.get("authorization")
@@ -72,5 +74,36 @@ async function runRefresh() {
     })
   )
 
-  return NextResponse.json({ updated, symbols: symbols.length })
+  // ── Evaluate TP/SL for open operations ──────────────────────────────────
+  const openOps = await prisma.operation.findMany({
+    where: {
+      closedAt: null,
+      OR: [{ tpPrice: { not: null } }, { slPrice: { not: null } }],
+    },
+    select: {
+      id: true, direction: true, tpPrice: true, slPrice: true,
+      ticker: { select: { id: true, sector: true, spreadOverridePct: true } },
+    },
+  })
+
+  let triggered = 0
+  for (const op of openOps) {
+    const latestQuote = await prisma.quote.findFirst({
+      where: { tickerId: op.ticker.id },
+      orderBy: { timestamp: "desc" },
+    })
+    if (!latestQuote) continue
+
+    const spread = computeSpread(latestQuote.bid, latestQuote.ask, latestQuote.last, op.ticker.sector, op.ticker.spreadOverridePct)
+    const hit = checkTpSl(op.direction as Direction, spread, op.tpPrice, op.slPrice)
+
+    if (hit) {
+      try {
+        await closeOperation(op.id, hit)
+        triggered++
+      } catch { /* already closed or other error */ }
+    }
+  }
+
+  return NextResponse.json({ updated, symbols: symbols.length, tpSlTriggered: triggered })
 }
