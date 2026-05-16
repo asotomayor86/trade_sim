@@ -1,3 +1,4 @@
+import { headers } from "next/headers"
 import { requireAdmin } from "@/lib/auth/session"
 import { prisma } from "@/lib/db/prisma"
 import { type InvitationCode } from "@prisma/client"
@@ -11,7 +12,10 @@ export default async function InvitationsPage() {
     orderBy: { createdAt: "desc" },
   })
 
-  const baseUrl = process.env.AUTH_URL ?? "http://localhost:3000"
+  const headersList = await headers()
+  const host = headersList.get("host") ?? "localhost:3000"
+  const protocol = host.startsWith("localhost") ? "http" : "https"
+  const baseUrl = `${protocol}://${host}`
 
   return (
     <div className="space-y-6">
