@@ -51,9 +51,7 @@ export function RegisterForm({
           className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           placeholder="tu_usuario"
         />
-        <p className="text-xs text-slate-400">
-          3–20 caracteres · letras, números, <code>-</code> y <code>_</code>
-        </p>
+        <p className="text-xs text-slate-400">3–30 caracteres · letras, números, espacios y acentos</p>
         {fieldError("username")}
       </div>
 

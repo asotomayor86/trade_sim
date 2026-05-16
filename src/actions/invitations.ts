@@ -21,9 +21,10 @@ export async function createInvitationCode(note?: string) {
 const registerSchema = z.object({
   username: z
     .string()
+    .trim()
     .min(3, "Mínimo 3 caracteres")
-    .max(20, "Máximo 20 caracteres")
-    .regex(/^[a-zA-Z0-9_-]+$/, "Solo letras, números, guiones (-) y guiones bajos (_)"),
+    .max(30, "Máximo 30 caracteres")
+    .regex(/^[a-zA-Z0-9 _áéíóúüñÁÉÍÓÚÜÑ-]+$/, "Caracteres no permitidos en el nombre de usuario"),
   password: z.string().min(8, "Mínimo 8 caracteres"),
   code: z.string().min(1, "Código requerido"),
 })
