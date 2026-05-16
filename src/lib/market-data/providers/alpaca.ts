@@ -1,9 +1,12 @@
 import type { MarketDataProvider } from "../provider"
 import type { Quote, Candle, Timeframe } from "../types"
 
-const BASE = process.env.ALPACA_BASE_URL ?? "https://data.alpaca.markets"
-const KEY = process.env.ALPACA_API_KEY ?? ""
-const SECRET = process.env.ALPACA_API_SECRET ?? ""
+// Strip BOM (U+FEFF) that PowerShell may inject when setting env vars via pipe
+const clean = (s: string) => s.replace(/^﻿/, "").trim()
+
+const BASE = clean(process.env.ALPACA_BASE_URL ?? "https://data.alpaca.markets")
+const KEY = clean(process.env.ALPACA_API_KEY ?? "")
+const SECRET = clean(process.env.ALPACA_API_SECRET ?? "")
 
 function alpacaHeaders() {
   return {
