@@ -23,15 +23,15 @@ const registerSchema = z.object({
     .string()
     .min(3, "Mínimo 3 caracteres")
     .max(20, "Máximo 20 caracteres")
-    .regex(/^[a-zA-Z0-9_]+$/, "Solo letras, números y guiones bajos"),
+    .regex(/^[a-zA-Z0-9_-]+$/, "Solo letras, números, guiones (-) y guiones bajos (_)"),
   password: z.string().min(8, "Mínimo 8 caracteres"),
   code: z.string().min(1, "Código requerido"),
 })
 
 export async function registerWithCode(
-  _prevState: { error?: string } | null,
+  _prevState: { error?: string; field?: string } | null,
   formData: FormData
-): Promise<{ error?: string } | null> {
+): Promise<{ error?: string; field?: string } | null> {
   const raw = {
     username: formData.get("username"),
     password: formData.get("password"),
@@ -41,7 +41,8 @@ export async function registerWithCode(
   const parsed = registerSchema.safeParse(raw)
   if (!parsed.success) {
     const first = parsed.error.issues[0]
-    return { error: first?.message ?? "Datos inválidos" }
+    const field = first?.path[0] as string | undefined
+    return { error: first?.message ?? "Datos inválidos", field }
   }
 
   const { username, password, code } = parsed.data
@@ -53,12 +54,12 @@ export async function registerWithCode(
     invitation.usedAt ||
     (invitation.expiresAt && invitation.expiresAt < new Date())
   ) {
-    return { error: "Código de invitación inválido o ya utilizado" }
+    return { error: "Código de invitación inválido o ya utilizado", field: "code" }
   }
 
   const existing = await prisma.user.findUnique({ where: { username } })
   if (existing) {
-    return { error: "El nombre de usuario ya está en uso" }
+    return { error: "El nombre de usuario ya está en uso", field: "username" }
   }
 
   const passwordHash = await hashPassword(password)
