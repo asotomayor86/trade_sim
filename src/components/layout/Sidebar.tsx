@@ -3,6 +3,7 @@ import { type Role } from "@prisma/client"
 
 const navItems = [
   { href: "/app/dashboard", label: "Dashboard" },
+  { href: "/app/chart", label: "Gráficos" },
   { href: "/app/analyses", label: "Análisis" },
   { href: "/app/operations", label: "Operaciones" },
   { href: "/app/ranking", label: "Ranking" },
