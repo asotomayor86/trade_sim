@@ -8,12 +8,14 @@ const navItems = [
   { href: "/app/operations", label: "Operaciones" },
   { href: "/app/alerts", label: "Alertas" },
   { href: "/app/ranking", label: "Ranking" },
+  { href: "/app/users", label: "Usuarios" },
 ]
 
 const adminItems = [
   { href: "/admin/users", label: "Usuarios" },
   { href: "/admin/invitations", label: "Invitaciones" },
   { href: "/admin/tickers", label: "Tickers" },
+  { href: "/admin/audit-log", label: "Audit Log" },
 ]
 
 export function Sidebar({ role }: { role: Role }) {

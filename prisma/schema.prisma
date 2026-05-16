@@ -30,13 +30,22 @@ enum Timeframe {
   ONE_DAY
 }
 
+enum UserAuditAction {
+  RESET_PASSWORD
+  DEACTIVATE
+  REACTIVATE
+  ROLE_CHANGE
+}
+
 model User {
-  id           String   @id @default(cuid())
-  username     String   @unique
-  passwordHash String
-  role         Role     @default(USER)
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
+  id                  String    @id @default(cuid())
+  username            String    @unique
+  passwordHash        String
+  role                Role      @default(USER)
+  active              Boolean   @default(true)
+  createdAt           DateTime  @default(now())
+  deactivatedAt       DateTime?
+  lastPasswordResetAt DateTime?
 
   analyses      Analysis[]
   operations    Operation[]
@@ -44,8 +53,27 @@ model User {
   drawings      Drawing[]
   pushSubs      PushSubscription[]
   notifications Notification[]
+  auditActed    UserAuditLog[]     @relation("AuditActor")
+  auditReceived UserAuditLog[]     @relation("AuditTarget")
 
   @@map("users")
+}
+
+model UserAuditLog {
+  id        String          @id @default(cuid())
+  actorId   String
+  targetId  String
+  action    UserAuditAction
+  metadata  Json?
+  createdAt DateTime        @default(now())
+
+  actor  User @relation("AuditActor",  fields: [actorId],  references: [id])
+  target User @relation("AuditTarget", fields: [targetId], references: [id])
+
+  @@index([targetId, createdAt(sort: Desc)])
+  @@index([actorId,  createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+  @@map("user_audit_log")
 }
 
 model InvitationCode {
@@ -216,6 +244,7 @@ model Operation {
   snapshot AnalysisSnapshot @relation(fields: [snapshotId], references: [id])
 
   @@index([userId, closedAt])
+  @@index([userId, openedAt(sort: Desc)])
   @@map("operations")
 }
 
