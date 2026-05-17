@@ -1,3 +1,1 @@
-{
-  "buildCommand": "prisma generate && npm run db:seed-analyses-v2 && npm run db:seed-strategies && next build"
-}
+{}
