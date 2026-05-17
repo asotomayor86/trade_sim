@@ -550,6 +550,46 @@ F4 ✓ → F5 ✓ → F6 ✓ → F7 ✓ → F8 ✓ → F9 ✓
 - [x] Tabla de estrategias predefinidas de referencia
 - [AC] Documento actualizado y coherente con la implementación ✓
 
+### F12-14 · Función `calculateSuggestedEntry`
+
+- [x] Crear `src/lib/playbook/entry-suggester.ts` con función pura `calculateSuggestedEntry(strategy, candles): { price: number } | { price: null, reason: string }`
+- [x] Implementar lógica para los 7 `entryRule` usando `calcEMA`, `calcBollinger`, `calcVWAP` de F11
+- [x] Reutilizar caché del motor de indicadores (`calcIndicator` de engine.ts, §7.23)
+- [x] Tests unitarios en `entry-suggester.test.ts`: 7 reglas × (ok + datos faltantes) = 14+ tests
+- [AC] Todas las reglas calculan precio o devuelven razón clara ✓
+
+### F12-15 · Componente `<StrategySuggestions>`
+
+- [x] Crear `src/components/chart/StrategySuggestions.tsx` (client component con datos pasados desde server)
+- [x] Recibe `suggestions: SuggestionRow[]` (código, nombre, precio sugerido o razón, strategyId, direction)
+- [x] Tabla con columnas: código, nombre, entrada sugerida, dirección, acción
+- [x] Botón "Lanzar orden" por fila; deshabilitado si `price === null`
+- [x] Integrado en chart page server: calcula sugerencias al cargar, pasa como prop
+- [AC] Lista renderiza N estrategias; sin precio muestra "—" + razón ✓
+
+### F12-16 · Modal precio precargado y bloqueado
+
+- [x] Modificar `LaunchOrderModal` para recibir prop `lockedPrice?: number`
+- [x] Si `lockedPrice` → input readonly, valor fijo
+- [x] Botón de fila en `StrategySuggestions` pasa `lockedPrice` + abre modal
+- [AC] Modal con precio bloqueado; crea Order con ese precio ✓
+
+### F12-17 · Interacción hover/click → línea en gráfico
+
+- [x] `ChartContainer` expone ref con métodos `addSuggestionLine(price, label)` y `removeSuggestionLine(label)`
+- [x] `StrategySuggestions` comunica hover y click al `ChartContainer` vía callback props
+- [x] Hover → línea temporal (se elimina en mouse leave); click → toggle línea fija (indicador visual en fila)
+- [x] Al cambiar símbolo o timeframe → limpiar líneas fijas
+- [AC] Hover/click funcionan sin re-render del gráfico completo ✓
+
+### F12-18 · Mayúsculas: sidebar, títulos de página y nombres de sección
+
+- [x] Sidebar: todos los labels en mayúsculas en el código (no CSS)
+- [x] `<h1>` principal de cada `/app/**/page.tsx`: texto en mayúsculas
+- [x] Nombres de sección (`<h2>`, encabezados de grupo): en mayúsculas
+- [x] NO afectar botones, contenido de tablas, párrafos, labels de formularios, errores
+- [AC] Navegación y títulos en mayúsculas; contenido sin cambios ✓
+
 ---
 
 ## Orden de ejecución recomendado
@@ -559,8 +599,7 @@ F1 ✓ → F2-01..05 ✓ → F3-01 ✓ → F2-06 (parcial) → F3-02..03 ✓ →
 F4 ✓ → F5 ✓ → F6 ✓ → F7 ✓ → F8 ✓ → F9 ✓ →
 F10: F10-01 → ... → F10-10 →
 F11 ✓ →
-F12: F12-01 → F12-02 → F12-03 → F12-04 → F12-05 → F12-06 → F12-07 →
-     F12-08 → F12-09 → F12-10 → F12-11 → F12-12
+F12: F12-01..F12-12 ✓ → F12-14 → F12-15 → F12-16 → F12-17 → F12-18
 ```
 
 ---

@@ -13,7 +13,7 @@ export default async function NewStrategyPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-slate-900">Nueva estrategia</h1>
+      <h1 className="text-2xl font-bold text-slate-900">NUEVA ESTRATEGIA</h1>
       <StrategyEditor analyses={analyses} />
     </div>
   )

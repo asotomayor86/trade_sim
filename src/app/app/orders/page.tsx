@@ -56,7 +56,7 @@ export default async function OrdersPage() {
 
   return (
     <div className="space-y-8">
-      <h1 className="text-2xl font-bold text-slate-900">Órdenes Playbook</h1>
+      <h1 className="text-2xl font-bold text-slate-900">ÓRDENES PLAYBOOK</h1>
 
       {/* ── Pendientes ──────────────────────────────────────────── */}
       <section className="space-y-3">

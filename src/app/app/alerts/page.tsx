@@ -21,7 +21,7 @@ export default async function AlertsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-slate-900">Alertas de precio</h1>
+      <h1 className="text-2xl font-bold text-slate-900">ALERTAS DE PRECIO</h1>
       <AlertsClient tickers={tickers} alerts={alerts} />
     </div>
   )

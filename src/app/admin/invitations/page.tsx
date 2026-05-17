@@ -20,7 +20,7 @@ export default async function InvitationsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900">Invitaciones</h1>
+        <h1 className="text-2xl font-bold text-slate-900">INVITACIONES</h1>
         <CreateInvitationButton />
       </div>
 

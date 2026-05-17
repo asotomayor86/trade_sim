@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useCallback, useState } from "react"
+import { useEffect, useRef, useCallback, useState, forwardRef, useImperativeHandle } from "react"
 import {
   createChart,
   CandlestickSeries,
@@ -16,6 +16,13 @@ import {
 import { calcIndicator, clearIndicatorCache, type IndicatorConfig, type CalcResult } from "@/lib/indicators/engine"
 import type { CandlePoint } from "@/lib/indicators/calculations"
 import type { DrawingData } from "@/actions/drawings"
+
+// Public handle exposed via forwardRef
+export interface ChartHandle {
+  addSuggestionLine: (price: number, label: string, fixed?: boolean) => void
+  removeSuggestionLine: (label: string) => void
+  clearAllSuggestionLines: () => void
+}
 
 const T = (n: number) => n as unknown as UTCTimestamp
 
@@ -39,17 +46,58 @@ interface Props {
   saveDrawings: (tickerId: string, drawings: DrawingData[]) => Promise<void>
 }
 
-export function ChartContainer({
+export const ChartContainer = forwardRef<ChartHandle, Props>(function ChartContainer({
   candles, tickerId, symbol, timeframe, indicators, drawingMode, onPriceHover,
   loadDrawings, saveDrawings,
-}: Props) {
+}, ref) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null)
   const indicatorSeriesRef = useRef<ISeriesApi<SeriesType>[]>([])
   const priceLinesRef = useRef<IPriceLine[]>([])
+  // suggestion lines: label → IPriceLine
+  const suggestionLinesRef = useRef<Map<string, IPriceLine>>(new Map())
   const [drawings, setDrawings] = useState<DrawingData[]>([])
   const [saved, setSaved] = useState(false)
+
+  // ---- Expose suggestion-line API to parent via ref ----
+  useImperativeHandle(ref, () => ({
+    addSuggestionLine(price: number, label: string, fixed = false) {
+      const series = candleSeriesRef.current
+      if (!series) return
+      // Remove existing line with same label first
+      const existing = suggestionLinesRef.current.get(label)
+      if (existing) {
+        try { series.removePriceLine(existing) } catch { /* ok */ }
+      }
+      const line = series.createPriceLine({
+        price,
+        color: fixed ? "#f59e0b" : "#94a3b888",
+        lineWidth: fixed ? 1 : 1,
+        lineStyle: fixed ? LineStyle.Solid : LineStyle.Dotted,
+        axisLabelVisible: true,
+        title: label,
+      })
+      suggestionLinesRef.current.set(label, line)
+    },
+    removeSuggestionLine(label: string) {
+      const series = candleSeriesRef.current
+      if (!series) return
+      const line = suggestionLinesRef.current.get(label)
+      if (line) {
+        try { series.removePriceLine(line) } catch { /* ok */ }
+        suggestionLinesRef.current.delete(label)
+      }
+    },
+    clearAllSuggestionLines() {
+      const series = candleSeriesRef.current
+      if (!series) return
+      suggestionLinesRef.current.forEach((line) => {
+        try { series.removePriceLine(line) } catch { /* ok */ }
+      })
+      suggestionLinesRef.current.clear()
+    },
+  }))
 
   // ---- Init chart once ----
   useEffect(() => {
@@ -320,4 +368,4 @@ export function ChartContainer({
       </div>
     </div>
   )
-}
+})

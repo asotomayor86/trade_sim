@@ -2,25 +2,25 @@ import Link from "next/link"
 import { type Role } from "@prisma/client"
 
 const navItems = [
-  { href: "/app/dashboard", label: "Dashboard" },
-  { href: "/app/chart", label: "Gráficos" },
-  { href: "/app/operations", label: "Operaciones" },
-  { href: "/app/orders", label: "Órdenes" },
-  { href: "/app/alerts", label: "Alertas" },
-  { href: "/app/ranking", label: "Ranking" },
-  { href: "/app/users", label: "Usuarios" },
+  { href: "/app/dashboard", label: "DASHBOARD" },
+  { href: "/app/chart", label: "GRÁFICOS" },
+  { href: "/app/operations", label: "OPERACIONES" },
+  { href: "/app/orders", label: "ÓRDENES" },
+  { href: "/app/alerts", label: "ALERTAS" },
+  { href: "/app/ranking", label: "RANKING" },
+  { href: "/app/users", label: "USUARIOS" },
 ]
 
 const playbookItems = [
-  { href: "/app/analyses", label: "Análisis" },
-  { href: "/app/playbook/strategies", label: "Estrategias" },
+  { href: "/app/analyses", label: "ANÁLISIS" },
+  { href: "/app/playbook/strategies", label: "ESTRATEGIAS" },
 ]
 
 const adminItems = [
-  { href: "/admin/users", label: "Usuarios" },
-  { href: "/admin/invitations", label: "Invitaciones" },
-  { href: "/admin/tickers", label: "Tickers" },
-  { href: "/admin/audit-log", label: "Audit Log" },
+  { href: "/admin/users", label: "USUARIOS" },
+  { href: "/admin/invitations", label: "INVITACIONES" },
+  { href: "/admin/tickers", label: "TICKERS" },
+  { href: "/admin/audit-log", label: "AUDIT LOG" },
 ]
 
 export function Sidebar({ role }: { role: Role }) {

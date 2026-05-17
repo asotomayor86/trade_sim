@@ -47,7 +47,7 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-slate-900">
-        Bienvenido, {session.user.name}
+        BIENVENIDO, {String(session.user.name ?? "").toUpperCase()}
       </h1>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">

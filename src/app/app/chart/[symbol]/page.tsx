@@ -3,7 +3,11 @@ import { prisma } from "@/lib/db/prisma"
 import { redirect } from "next/navigation"
 import { ChartPage } from "@/components/chart/ChartPage"
 import { getLastApplied } from "@/actions/ultimo-analisis"
+import { buildSuggestions } from "@/lib/playbook/entry-suggester"
 import type { IndicatorConfig } from "@/lib/indicators/engine"
+import type { SuggestionRow } from "@/lib/playbook/entry-suggester"
+
+export type { SuggestionRow }
 
 interface Props {
   params: Promise<{ symbol: string }>
@@ -40,7 +44,7 @@ export default async function SymbolChartPage({ params }: Props) {
 
   if (!ticker) redirect("/app/chart/AAPL")
 
-  const [tickers, allAnalyses, lastApplied, allStrategies] = await Promise.all([
+  const [tickers, allAnalyses, lastApplied, allStrategies, recentCandles] = await Promise.all([
     prisma.ticker.findMany({
       where: { active: true },
       orderBy: { symbol: "asc" },
@@ -63,7 +67,13 @@ export default async function SymbolChartPage({ params }: Props) {
     prisma.strategy.findMany({
       where: { deleted: false },
       orderBy: { code: "asc" },
-      select: { id: true, code: true, name: true, analysisId: true, suffix: true, exitTargetType: true, exitTargetValue: true, stopLossType: true, stopLossValue: true },
+      select: { id: true, code: true, name: true, analysisId: true, suffix: true, entryRule: true, entryParams: true, exitTargetType: true, exitTargetValue: true, stopLossType: true, stopLossValue: true },
+    }),
+    prisma.candle.findMany({
+      where: { tickerId: ticker.id, timeframe: "ONE_DAY" },
+      orderBy: { timestamp: "asc" },
+      take: 100,
+      select: { open: true, high: true, low: true, close: true, volume: true, timestamp: true },
     }),
   ])
 
@@ -84,6 +94,23 @@ export default async function SymbolChartPage({ params }: Props) {
     })),
   }))
 
+  // Compute entry suggestions server-side using cached candles
+  const candlePoints = recentCandles.map((c) => ({
+    time: Math.floor(c.timestamp.getTime() / 1000),
+    open: c.open,
+    high: c.high,
+    low: c.low,
+    close: c.close,
+    volume: Number(c.volume),
+  }))
+
+  const strategiesWithParams = allStrategies.map((s) => ({
+    ...s,
+    entryParams: (s.entryParams ?? {}) as Record<string, unknown>,
+  }))
+
+  const suggestions = buildSuggestions(strategiesWithParams, candlePoints)
+
   return (
     <ChartPage
       ticker={ticker}
@@ -92,6 +119,7 @@ export default async function SymbolChartPage({ params }: Props) {
       initialLastApplied={lastApplied}
       userId={session.user.id}
       strategies={allStrategies}
+      suggestions={suggestions}
     />
   )
 }

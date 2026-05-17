@@ -14,7 +14,7 @@ export default async function NewAnalysisPage() {
   if (atLimit) {
     return (
       <div className="space-y-4">
-        <h1 className="text-2xl font-bold text-slate-900">Nuevo análisis</h1>
+        <h1 className="text-2xl font-bold text-slate-900">NUEVO ANÁLISIS</h1>
         <div className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">
           Has alcanzado el límite de {MAX_ANALYSES} análisis. Borra o duplica uno existente para
           poder crear uno nuevo.
@@ -29,7 +29,7 @@ export default async function NewAnalysisPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900">Nuevo análisis</h1>
+        <h1 className="text-2xl font-bold text-slate-900">NUEVO ANÁLISIS</h1>
         <span className="text-sm text-slate-500">{total}/{MAX_ANALYSES} análisis</span>
       </div>
       <AnalysisEditor />

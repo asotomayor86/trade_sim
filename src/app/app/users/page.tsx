@@ -58,7 +58,7 @@ export default async function UsersPage({ searchParams }: Props) {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-slate-900">Usuarios</h1>
+      <h1 className="text-2xl font-bold text-slate-900">USUARIOS</h1>
       <Suspense>
         <UsersList users={sorted} isAdmin={isAdmin} />
       </Suspense>

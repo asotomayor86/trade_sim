@@ -26,7 +26,7 @@ export default async function AnalysesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Análisis</h1>
+          <h1 className="text-2xl font-bold text-slate-900">ANÁLISIS</h1>
           <p className={`text-sm font-medium ${atLimit ? "text-red-600" : "text-slate-500"}`}>
             {total}/{MAX_ANALYSES} análisis
           </p>

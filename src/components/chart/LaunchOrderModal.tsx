@@ -9,6 +9,7 @@ interface Props {
   tickerId: string
   tickerSymbol: string
   currentPrice: number | null
+  lockedPrice?: number  // F12-16: if set, price is readonly
   onClose: () => void
 }
 
@@ -38,9 +39,14 @@ function computeExitPrices(
   return { tpLabel, slLabel }
 }
 
-export function LaunchOrderModal({ strategy, tickerId, tickerSymbol, currentPrice, onClose }: Props) {
-  const [direction, setDirection] = useState<"LONG" | "SHORT">("LONG")
-  const [targetPrice, setTargetPrice] = useState(currentPrice?.toFixed(2) ?? "")
+export function LaunchOrderModal({ strategy, tickerId, tickerSymbol, currentPrice, lockedPrice, onClose }: Props) {
+  const [direction, setDirection] = useState<"LONG" | "SHORT">(
+    strategy.suffix === "SHORT" || strategy.suffix === "DN" ? "SHORT" : "LONG"
+  )
+  const [targetPrice, setTargetPrice] = useState(
+    lockedPrice?.toFixed(2) ?? currentPrice?.toFixed(2) ?? ""
+  )
+  const isPriceLocked = lockedPrice !== undefined
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -111,19 +117,23 @@ export function LaunchOrderModal({ strategy, tickerId, tickerSymbol, currentPric
             <div>
               <label className="mb-1.5 block text-xs font-medium text-slate-400 uppercase tracking-wider">
                 Precio objetivo de entrada
+                {isPriceLocked && <span className="ml-2 text-amber-400">(sugerido · fijo)</span>}
               </label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">$</span>
                 <input
                   type="number"
                   value={targetPrice}
-                  onChange={(e) => setTargetPrice(e.target.value)}
+                  onChange={(e) => !isPriceLocked && setTargetPrice(e.target.value)}
+                  readOnly={isPriceLocked}
                   step={0.01}
                   min={0.01}
-                  className="w-full rounded-md border border-slate-600 bg-slate-800 py-2 pl-7 pr-3 text-sm text-white focus:border-blue-500 focus:outline-none"
+                  className={`w-full rounded-md border border-slate-600 bg-slate-800 py-2 pl-7 pr-3 text-sm text-white focus:border-blue-500 focus:outline-none ${
+                    isPriceLocked ? "cursor-not-allowed opacity-80" : ""
+                  }`}
                 />
               </div>
-              {currentPrice && (
+              {!isPriceLocked && currentPrice && (
                 <p className="mt-1 text-xs text-slate-500">Precio actual: ${currentPrice.toFixed(2)}</p>
               )}
             </div>

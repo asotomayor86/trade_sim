@@ -81,7 +81,7 @@ export default async function OperationsPage({ searchParams }: Props) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold text-slate-900">Operaciones</h1>
+          <h1 className="text-2xl font-bold text-slate-900">OPERACIONES</h1>
           {/* Playbook filter toggle */}
           <div className="flex rounded-md border border-slate-200 overflow-hidden text-sm">
             <Link

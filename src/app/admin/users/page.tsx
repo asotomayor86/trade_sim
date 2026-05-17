@@ -16,7 +16,7 @@ export default async function UsersPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-slate-900">Usuarios</h1>
+      <h1 className="text-2xl font-bold text-slate-900">USUARIOS</h1>
 
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
         <table className="w-full text-sm">

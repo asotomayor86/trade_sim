@@ -1,6 +1,6 @@
 # trade_sim — Architecture & Design Reference
 
-> Versión: 1.4 · Fecha: 2026-05-17
+> Versión: 1.5 · Fecha: 2026-05-17
 > Propósito: documento de referencia para futuros chats con Claude. Pasar junto con `backlog.md` al inicio de cada sesión.
 > Repositorio: https://github.com/asotomayor86/trade_sim
 
@@ -1096,3 +1096,60 @@ GitHub Actions (*/5 min)
 | `prisma/seedStrategies.ts` | 7 estrategias predefinidas |
 | `prisma/migrations/20260517120000_f12_playbook/` | Migración SQL |
 | `.github/workflows/evaluate-orders.yml` | GitHub Action */5 min |
+
+---
+
+## 19.7 Extensión F12: Composición de Jugada en Gráfico + Convención Mayúsculas
+
+### Decisiones de diseño (F12-14..F12-18)
+
+| # | Decisión |
+|---|---|
+| 7.37 | **Todas las estrategias visibles en el panel de sugerencias**, no solo las del análisis activo. Si no se puede calcular el precio sugerido, se muestra "—" con razón breve. |
+| 7.38 | **El panel muestra solo el precio de entrada sugerido**. Objetivo y stop se ven únicamente en el modal de confirmación. |
+| 7.39 | **Precio bloqueado en el modal**: si se abre desde el panel de sugerencias, el input de precio es `readonly`. El usuario no puede modificarlo; solo puede confirmar o cancelar. |
+| 7.40 | **Líneas de precio sin persistencia**: hover → línea temporal (punteada, tenue); click → toggle de línea fija (sólida, ámbar). Se limpian al cambiar de símbolo o timeframe. Sin almacenamiento en BD. |
+| 7.41 | **Sugerencias calculadas server-side al cargar la página**, usando candles cacheados en BD. Sin revalidate automático: el usuario recarga para actualizar precios. |
+| 7.42 | **Convención de mayúsculas**: sidebar labels, `<h1>` de páginas y `<h2>` de secciones principales en MAYÚSCULAS en el código (no CSS). Botones, tablas, párrafos, formularios y mensajes de error permanecen sin cambios. |
+
+### Tabla de cálculo de precio de entrada sugerido
+
+| entryRule | Precio sugerido | Si no hay datos |
+|-----------|----------------|-----------------|
+| `EMA_CROSS_UP` | Valor actual EMA (periodo `ema_fast`, default 20) | "faltan velas (mín. N)" |
+| `EMA_CROSS_DOWN` | Valor actual EMA (periodo `ema_fast`, default 20) | "faltan velas (mín. N)" |
+| `RSI_OVERSOLD_BB_LOWER` | Banda inferior Bollinger (periodo `bb_period`, default 20) | "faltan velas (mín. N)" |
+| `BB_BREAKOUT_UP_VOLUME` | Banda superior Bollinger (periodo `bb_period`, default 20) | "faltan velas (mín. N)" |
+| `BB_BREAKOUT_DOWN_VOLUME` | Banda inferior Bollinger (periodo `bb_period`, default 20) | "faltan velas (mín. N)" |
+| `EMA_STOCH_CROSS` | Valor actual EMA (periodo `ema_period`, default 9) | "faltan velas (mín. N)" |
+| `VWAP_DEVIATION_RSI` | VWAP diario × (1 − `vwap_deviation_pct`/100) | "sin velas" |
+
+### Flujo: composición de jugada en gráfico
+
+```
+server: chart/[symbol]/page.tsx
+  → prisma.candle.findMany (últimas 100 velas 1D)
+  → buildSuggestions(strategies, candles) → SuggestionRow[]
+  → pasa como prop a ChartPage
+
+client: ChartPage
+  → chartRef = useRef<ChartHandle>()
+  → <ChartContainer ref={chartRef} ...>   ← expone addSuggestionLine/removeSuggestionLine
+  → <StrategySuggestions suggestions chartRef ...>
+
+StrategySuggestions:
+  → hover fila → chartRef.current.addSuggestionLine(price, code, false)  [línea temporal]
+  → mouse leave → chartRef.current.removeSuggestionLine(code)
+  → click fila  → toggle: addSuggestionLine(price, code, true) | removeSuggestionLine(code)
+  → botón ⚡     → LaunchOrderModal con lockedPrice = row.suggestedPrice
+```
+
+### Nuevos archivos F12-14..18
+
+| Archivo | Rol |
+|---------|-----|
+| `src/lib/playbook/entry-suggester.ts` | Función pura `calculateSuggestedEntry` + `buildSuggestions` |
+| `src/lib/playbook/entry-suggester.test.ts` | 22 tests (7 reglas × ok + datos faltantes + empty) |
+| `src/components/chart/StrategySuggestions.tsx` | Panel de sugerencias: tabla + hover/click + modal |
+| `src/components/chart/ChartContainer.tsx` | Extendido con `forwardRef` + `ChartHandle` (addSuggestionLine, removeSuggestionLine, clearAll) |
+| `src/components/chart/LaunchOrderModal.tsx` | Extendido con prop `lockedPrice?: number` (input readonly) |

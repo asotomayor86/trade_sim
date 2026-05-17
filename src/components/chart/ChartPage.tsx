@@ -3,14 +3,17 @@
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { ChartContainer } from "./ChartContainer"
+import { useRef } from "react"
 import { AnalysisSelector } from "./AnalysisSelector"
 import { StrategySelector } from "./StrategySelector"
 import { LaunchOrderModal } from "./LaunchOrderModal"
+import { StrategySuggestions } from "./StrategySuggestions"
 import type { CandlePoint } from "@/lib/indicators/calculations"
 import type { IndicatorConfig } from "@/lib/indicators/engine"
-import type { AnalysisSummary, StrategySummary } from "@/app/app/chart/[symbol]/page"
+import type { AnalysisSummary, StrategySummary, SuggestionRow } from "@/app/app/chart/[symbol]/page"
 import type { LastAppliedResult } from "@/actions/ultimo-analisis"
 import { saveDrawings, loadDrawings } from "@/actions/drawings"
+import type { ChartHandle } from "./ChartContainer"
 
 interface Ticker { id: string; symbol: string; name: string; sector: string }
 
@@ -26,10 +29,12 @@ interface Props {
   initialLastApplied: LastAppliedResult | null
   userId: string
   strategies: StrategySummary[]
+  suggestions: SuggestionRow[]
 }
 
-export function ChartPage({ ticker, tickers, analyses, initialLastApplied, strategies }: Props) {
+export function ChartPage({ ticker, tickers, analyses, initialLastApplied, strategies, suggestions }: Props) {
   const router = useRouter()
+  const chartRef = useRef<ChartHandle>(null)
   const [timeframe, setTimeframe] = useState<TF>("1D")
   const [candles, setCandles] = useState<CandlePoint[]>([])
   const [loading, setLoading] = useState(false)
@@ -89,6 +94,11 @@ export function ChartPage({ ticker, tickers, analyses, initialLastApplied, strat
   }, [ticker.symbol, timeframe])
 
   useEffect(() => { fetchCandles() }, [fetchCandles])
+
+  // Clear suggestion lines when symbol or timeframe changes
+  useEffect(() => {
+    chartRef.current?.clearAllSuggestionLines()
+  }, [ticker.symbol, timeframe])
 
   const handleApplyAnalysis = (id: string, name: string, indicators: IndicatorConfig[]) => {
     setActiveAnalysisId(id)
@@ -238,6 +248,7 @@ export function ChartPage({ ticker, tickers, analyses, initialLastApplied, strat
       )}
       {!loading && !error && candles.length > 0 && (
         <ChartContainer
+          ref={chartRef}
           candles={candles}
           tickerId={ticker.id}
           symbol={ticker.symbol}
@@ -255,7 +266,7 @@ export function ChartPage({ ticker, tickers, analyses, initialLastApplied, strat
         </div>
       )}
 
-      {/* Launch order modal */}
+      {/* Launch order modal (from toolbar) */}
       {showOrderModal && activeStrategy && (
         <LaunchOrderModal
           strategy={activeStrategy}
@@ -263,6 +274,17 @@ export function ChartPage({ ticker, tickers, analyses, initialLastApplied, strat
           tickerSymbol={ticker.symbol}
           currentPrice={hoveredPrice}
           onClose={() => setShowOrderModal(false)}
+        />
+      )}
+
+      {/* Strategy suggestions panel */}
+      {suggestions.length > 0 && (
+        <StrategySuggestions
+          suggestions={suggestions}
+          strategies={strategies}
+          tickerId={ticker.id}
+          tickerSymbol={ticker.symbol}
+          chartRef={chartRef}
         />
       )}
     </div>

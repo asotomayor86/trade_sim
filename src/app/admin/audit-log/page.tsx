@@ -22,7 +22,7 @@ export default async function AuditLogPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-slate-900">Auditoría de usuarios</h1>
+      <h1 className="text-2xl font-bold text-slate-900">AUDITORÍA DE USUARIOS</h1>
       <AuditLogClient initialLogs={serialized} />
     </div>
   )

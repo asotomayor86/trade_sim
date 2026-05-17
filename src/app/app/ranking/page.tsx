@@ -56,7 +56,7 @@ export default async function RankingPage({ searchParams }: Props) {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-bold text-slate-900">Ranking</h1>
+        <h1 className="text-2xl font-bold text-slate-900">RANKING</h1>
         <Suspense>
           <RankingFilters analyses={analyses} />
         </Suspense>
@@ -75,7 +75,7 @@ export default async function RankingPage({ searchParams }: Props) {
                 <th className="px-4 py-3 text-left font-medium">Usuario</th>
                 <th className="px-4 py-3 text-right font-medium">Retorno medio</th>
                 <th className="px-4 py-3 text-right font-medium">Win rate</th>
-                <th className="px-4 py-3 text-right font-medium">Operaciones</th>
+                <th className="px-4 py-3 text-right font-medium">OPERACIONES</th>
                 <th className="px-4 py-3 text-right font-medium">PnL total</th>
               </tr>
             </thead>
