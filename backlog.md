@@ -424,12 +424,143 @@ F4 ✓ → F5 ✓ → F6 ✓ → F7 ✓ → F8 ✓ → F9 ✓
 
 ---
 
+## F11 — Sistema de Análisis Técnico
+
+> F11 completada (2026-05-17). Ver architecture.md §18 para decisiones completas.
+> Motor de indicadores desacoplado, UltimoAnalisisAplicado, permisos abiertos, límite 15.
+> Nuevos tipos: VWAP, STOCH. Selector de análisis en gráfico reemplaza IndicatorPanel manual.
+
+---
+
+## F12 — Playbook, Estrategias y Trading Ficticio
+
+> Objetivo: nueva sección Playbook con Análisis + Estrategias. Órdenes ficticias con entrada automática a precio objetivo (validez 7 días), cierre automático por TP/SL a granularidad 1 min.
+> Importe fijo 1.000$/orden. Permisos abiertos en estrategias. Sin límite numérico de estrategias.
+> Diseño completo en `architecture.md` §19.
+
+### F12-01 · Migración Prisma
+
+- [x] Añadir `code String? @unique` a `Analysis`
+- [x] Añadir enums: `StrategySuffix` (LONG/SHORT/BNC/UP/DN), `OrderStatus` (PENDING/EXECUTED/EXPIRED), `UnexecutedReason` (EXPIRED), `StrategyEntryRule` (7 reglas), `ExitTargetType` (3 tipos), `StopLossType` (2 tipos)
+- [x] Crear modelo `Strategy` con FK analysisId, `@@unique([analysisId, suffix])`, code único global
+- [x] Crear modelo `Order` (PENDING→EXECUTED|EXPIRED, targetPrice, expiresAt, amount 1000)
+- [x] Crear modelo `UnexecutedOrder` (registro de órdenes expiradas)
+- [x] Extender `Operation`: `orderId String? @unique`, `strategyId String?`, `targetPriceExit Float?`, `closedByStrategy Boolean @default(false)`
+- [x] Añadir relaciones en User, Ticker, Analysis, Operation
+- [x] Crear migración SQL manual `prisma/migrations/20260517_f12_playbook/`
+- [x] `npx prisma generate`
+- [AC] `tsc --noEmit` sin errores ✓
+
+### F12-02 · Generador de códigos automáticos + tests
+
+- [x] Crear `src/lib/playbook/codes.ts`
+  - [x] `generateAnalysisCode(name, existingCodes[])` → 3 letras, consonantes del nombre normalizado, resolución colisiones TND2/TND3
+  - [x] `generateStrategyCode(analysisCode, suffix)` → "RSB-BNC"
+- [x] Tests unitarios en `src/lib/playbook/codes.test.ts`
+  - [x] Casos base: "Tendencia clásica" → "TND", "Breakout" → "BRK"
+  - [x] Colisión: si "TND" existe, devuelve "TND2"
+  - [x] `generateStrategyCode("RSB", "BNC")` → "RSB-BNC"
+- [AC] Todos los tests pasan ✓
+
+### F12-03 · Seed F12 — análisis con codes + 7 estrategias
+
+- [x] Crear `prisma/seedAnalysesV2.ts` — upsert 5 análisis estándar con codes (TND/RSB/BRK/SCP/VWP), indicadores F11-compatible
+- [x] Crear `prisma/seedStrategies.ts` — 7 estrategias predefinidas (`isStandard: true`)
+- [x] Añadir scripts `"db:seed-analyses-v2"` y `"db:seed-strategies"` a package.json
+- [AC] Seeds corren sin errores; 5 análisis con code + 7 estrategias con isStandard=true en BD ✓
+
+### F12-04 · Server Actions de Estrategia — CRUD
+
+- [x] Crear `src/actions/strategies.ts`
+  - [x] `createStrategy(input)` — genera code, valida unicidad nombre y `(analysisId, suffix)`, sin límite numérico
+  - [x] `updateStrategy(id, input)` — edición viva; bloquea si hay órdenes PENDING
+  - [x] `deleteStrategy(id)` — soft delete; bloquea si hay órdenes PENDING u operaciones OPEN vinculadas
+  - [x] `cloneStrategy(id)` — duplica con nuevo code (nuevo sufijo o análisis)
+- [x] Validación Zod en todas las entradas
+- [AC] CRUD completo; unicidades enforced ✓
+
+### F12-05 · Páginas `/app/playbook/strategies`
+
+- [x] `/app/playbook/strategies/page.tsx` — lista todas las estrategias (no borradas); código, nombre, análisis, regla, objetivo, stop, badge predefinida
+- [x] `/app/playbook/strategies/new/page.tsx` + `StrategyEditor` — formulario con análisis (dropdown), suffix, entryRule (dropdown + params dinámicos), exitTargetType + valor, stopLossType + valor
+- [x] `/app/playbook/strategies/[id]/page.tsx` — edición; botón Duplicar y Borrar
+- [x] `/app/playbook/analyses/page.tsx` — redirect a `/app/analyses` (reutilización)
+- [AC] CRUD UI funcional; validaciones de negocio muestran mensajes claros ✓
+
+### F12-06 · Sidebar — sección Playbook
+
+- [x] Reemplazar entrada "Análisis" por grupo "Playbook" con dos sub-ítems: "Análisis" (→ `/app/analyses`) y "Estrategias" (→ `/app/playbook/strategies`)
+- [x] Añadir "Órdenes" al sidebar (→ `/app/orders`)
+- [AC] Navegación coherente; sub-ítems con indentación visual ✓
+
+### F12-07 · SA `createOrder` + selector de estrategia + modal "Lanzar orden"
+
+- [x] Crear `src/actions/orders.ts`
+  - [x] `createOrder(tickerId, strategyId, targetPrice, direction)` — crea Order PENDING, `expiresAt = now + 7d`, amount=1000, Zod validation
+- [x] Actualizar `src/app/app/chart/[symbol]/page.tsx` — pasar estrategias filtradas por análisis activo
+- [x] Crear `src/components/chart/StrategySelector.tsx` — dropdown de estrategias del análisis activo
+- [x] Crear `src/components/chart/LaunchOrderModal.tsx` — modal con preview (estrategia, símbolo, 1000$, 7 días), input precio objetivo, cálculo automático TP/SL según estrategia
+- [AC] Modal muestra preview correcto; orden creada en BD con expiresAt = now + 7d ✓
+
+### F12-08 · Motor de evaluación de órdenes y operaciones
+
+- [x] Crear `src/lib/orders/evaluator.ts`
+  - [x] `evaluateOrder(order, candle)` → `"EXECUTE" | "EXPIRE" | "WAIT"`: precio en [low,high] → EXECUTE; expiresAt < now → EXPIRE; else WAIT
+  - [x] `evaluateOperation(op, candle)` → `"CLOSE_SL" | "CLOSE_TP" | "HOLD"`: SL gana si ambos en misma vela
+  - [x] `computeExitPrices(strategy, entryPrice, candles)` → `{ tpPrice, slPrice }` — calcula TP/SL concretos desde la definición de la estrategia
+- [x] Tests unitarios en `src/lib/orders/evaluator.test.ts`
+  - [x] Order EXECUTE cuando targetPrice en [low, high]
+  - [x] Order WAIT cuando precio fuera de rango
+  - [x] Order EXPIRE cuando expiresAt pasado
+  - [x] Operation CLOSE_SL cuando SL en rango (aunque TP también lo esté → SL gana)
+  - [x] Operation CLOSE_TP cuando solo TP en rango
+  - [x] Operation HOLD cuando ninguno en rango
+- [AC] Todos los tests pasan; la regla SL > TP misma vela se verifica explícitamente ✓
+
+### F12-09 · RH `/api/cron/evaluate-orders` + GitHub Action
+
+- [x] Crear `src/app/api/cron/evaluate-orders/route.ts` — protegido con CRON_SECRET
+  - [x] Fetch vela 1 min más reciente de Alpaca para cada ticker con órdenes PENDING u operaciones de estrategia OPEN
+  - [x] Para cada Order PENDING no expirada: `evaluateOrder` → si EXECUTE → crear Operation + marcar Order EXECUTED
+  - [x] Para cada Order PENDING expirada: marcar EXPIRED + crear UnexecutedOrder
+  - [x] Para cada Operation OPEN con orderId: `evaluateOperation` → cerrar si TP/SL hit
+  - [x] Implementar `computeExitPrices` al crear Operation desde Order
+- [x] Crear `.github/workflows/evaluate-orders.yml` con schedule `*/5 * * * *` (fallback conservador)
+- [AC] Cron procesa correctamente órdenes y operaciones; responde 200 con stats ✓
+
+### F12-10 · Página `/app/orders` (3 pestañas)
+
+- [x] `/app/orders/page.tsx` — tabs: Pendientes / Ejecutadas / No ejecutadas
+- [x] Pendientes: Orders con status=PENDING del usuario; columnas: estrategia, ticker, precio objetivo, dirección, expira en (countdown)
+- [x] Ejecutadas: enlace a `/app/operations?filter=playbook` con operaciones de Playbook
+- [x] No ejecutadas: UnexecutedOrders del usuario; columnas: estrategia, ticker, precio objetivo, motivo, fecha
+- [AC] Tres tabs funcionan; countdown de expiración visible ✓
+
+### F12-11 · Extensión `/app/operations`
+
+- [x] Añadir columna "Estrategia" en tabla de operaciones (code si `strategyId` no nulo, "—" si manual)
+- [x] Añadir filtro URL param `?filter=playbook` (solo ops con `orderId IS NOT NULL`)
+- [x] Link desde `/app/orders` tab Ejecutadas pasa el parámetro
+- [AC] Operaciones de Playbook identificables; filtro funciona ✓
+
+### F12-12 · Actualizar architecture.md §19
+
+- [x] Nueva sección §19 F12 con todas las decisiones (importe 1000$, validez 7 días, granularidad 5 min, SL gana, permisos abiertos, sin límite estrategias, códigos inmutables)
+- [x] Actualizar §3 carpetas, §4 schema, §5 RH/SA, §13 fases
+- [x] Tabla de estrategias predefinidas de referencia
+- [AC] Documento actualizado y coherente con la implementación ✓
+
+---
+
 ## Orden de ejecución recomendado
 
 ```
 F1 ✓ → F2-01..05 ✓ → F3-01 ✓ → F2-06 (parcial) → F3-02..03 ✓ →
 F4 ✓ → F5 ✓ → F6 ✓ → F7 ✓ → F8 ✓ → F9 ✓ →
-F10: F10-01 → F10-02 → F10-03 → F10-04 → F10-05 → F10-06 → F10-07 → F10-08 → F10-09 → F10-10
+F10: F10-01 → ... → F10-10 →
+F11 ✓ →
+F12: F12-01 → F12-02 → F12-03 → F12-04 → F12-05 → F12-06 → F12-07 →
+     F12-08 → F12-09 → F12-10 → F12-11 → F12-12
 ```
 
 ---

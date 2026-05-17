@@ -16,6 +16,18 @@ export interface AnalysisSummary {
   indicators: IndicatorConfig[]
 }
 
+export interface StrategySummary {
+  id: string
+  code: string
+  name: string
+  analysisId: string
+  suffix: string
+  exitTargetType: string
+  exitTargetValue: number
+  stopLossType: string
+  stopLossValue: number
+}
+
 export default async function SymbolChartPage({ params }: Props) {
   const session = await requireAuth()
   const { symbol } = await params
@@ -28,7 +40,7 @@ export default async function SymbolChartPage({ params }: Props) {
 
   if (!ticker) redirect("/app/chart/AAPL")
 
-  const [tickers, allAnalyses, lastApplied] = await Promise.all([
+  const [tickers, allAnalyses, lastApplied, allStrategies] = await Promise.all([
     prisma.ticker.findMany({
       where: { active: true },
       orderBy: { symbol: "asc" },
@@ -48,6 +60,11 @@ export default async function SymbolChartPage({ params }: Props) {
       },
     }),
     getLastApplied(ticker.id),
+    prisma.strategy.findMany({
+      where: { deleted: false },
+      orderBy: { code: "asc" },
+      select: { id: true, code: true, name: true, analysisId: true, suffix: true, exitTargetType: true, exitTargetValue: true, stopLossType: true, stopLossValue: true },
+    }),
   ])
 
   const analyses: AnalysisSummary[] = allAnalyses.map((a) => ({
@@ -74,6 +91,7 @@ export default async function SymbolChartPage({ params }: Props) {
       analyses={analyses}
       initialLastApplied={lastApplied}
       userId={session.user.id}
+      strategies={allStrategies}
     />
   )
 }

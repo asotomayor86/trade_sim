@@ -37,6 +37,45 @@ enum UserAuditAction {
   ROLE_CHANGE
 }
 
+enum StrategySuffix {
+  LONG
+  SHORT
+  BNC
+  UP
+  DN
+}
+
+enum OrderStatus {
+  PENDING
+  EXECUTED
+  EXPIRED
+}
+
+enum UnexecutedReason {
+  EXPIRED
+}
+
+enum StrategyEntryRule {
+  EMA_CROSS_UP
+  EMA_CROSS_DOWN
+  RSI_OVERSOLD_BB_LOWER
+  BB_BREAKOUT_UP_VOLUME
+  BB_BREAKOUT_DOWN_VOLUME
+  EMA_STOCH_CROSS
+  VWAP_DEVIATION_RSI
+}
+
+enum ExitTargetType {
+  PERCENT_GAIN
+  BOLLINGER_MIDDLE
+  VWAP_TOUCH
+}
+
+enum StopLossType {
+  PERCENT
+  BOLLINGER_MIDDLE
+}
+
 model User {
   id                  String    @id @default(cuid())
   username            String    @unique
@@ -56,6 +95,8 @@ model User {
   auditActed              UserAuditLog[]          @relation("AuditActor")
   auditReceived           UserAuditLog[]          @relation("AuditTarget")
   ultimoAnalisisAplicado  UltimoAnalisisAplicado[]
+  orders                  Order[]
+  unexecutedOrders        UnexecutedOrder[]
 
   @@map("users")
 }
@@ -103,6 +144,8 @@ model Ticker {
   drawings               Drawing[]
   alerts                 Alert[]
   ultimoAnalisisAplicado UltimoAnalisisAplicado[]
+  orders                 Order[]
+  unexecutedOrders       UnexecutedOrder[]
 
   @@map("tickers")
 }
@@ -147,6 +190,7 @@ model Analysis {
   id          String   @id @default(cuid())
   userId      String?
   name        String
+  code        String?  @unique
   descripcion String?
   nameCustom  Boolean  @default(false)
   bias        String   @default("NEUTRAL")
@@ -155,14 +199,15 @@ model Analysis {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  user                  User?                   @relation(fields: [userId], references: [id])
-  indicators            AnalysisIndicator[]
-  rules                 AnalysisRule[]
-  snapshots             AnalysisSnapshot[]
-  operations            Operation[]
-  drawings              Drawing[]
-  alerts                Alert[]
+  user                   User?                   @relation(fields: [userId], references: [id])
+  indicators             AnalysisIndicator[]
+  rules                  AnalysisRule[]
+  snapshots              AnalysisSnapshot[]
+  operations             Operation[]
+  drawings               Drawing[]
+  alerts                 Alert[]
   ultimoAnalisisAplicado UltimoAnalisisAplicado[]
+  strategies             Strategy[]
 
   @@map("analyses")
 }
@@ -225,33 +270,41 @@ model Drawing {
 }
 
 model Operation {
-  id            String       @id @default(cuid())
-  userId        String
-  tickerId      String
-  analysisId    String
-  snapshotId    String
-  direction     Direction
-  entryPrice    Float
-  exitPrice     Float?
-  quantity      Float
-  nominal       Float        @default(100)
-  spreadApplied Float
-  spreadSource  String
-  tpPrice       Float?
-  slPrice       Float?
-  pnl           Float?
-  pnlPct        Float?
-  closeReason   CloseReason?
-  openedAt      DateTime     @default(now())
-  closedAt      DateTime?
+  id               String       @id @default(cuid())
+  userId           String
+  tickerId         String
+  analysisId       String
+  snapshotId       String
+  direction        Direction
+  entryPrice       Float
+  exitPrice        Float?
+  quantity         Float
+  nominal          Float        @default(100)
+  spreadApplied    Float
+  spreadSource     String
+  tpPrice          Float?
+  slPrice          Float?
+  pnl              Float?
+  pnlPct           Float?
+  closeReason      CloseReason?
+  openedAt         DateTime     @default(now())
+  closedAt         DateTime?
+  orderId          String?      @unique
+  strategyId       String?
+  targetPriceExit  Float?
+  closedByStrategy Boolean      @default(false)
 
   user     User             @relation(fields: [userId], references: [id])
   ticker   Ticker           @relation(fields: [tickerId], references: [id])
   analysis Analysis         @relation(fields: [analysisId], references: [id])
   snapshot AnalysisSnapshot @relation(fields: [snapshotId], references: [id])
+  order    Order?           @relation(fields: [orderId], references: [id])
+  strategy Strategy?        @relation(fields: [strategyId], references: [id])
 
   @@index([userId, closedAt])
   @@index([userId, openedAt(sort: Desc)])
+  @@index([orderId])
+  @@index([strategyId])
   @@map("operations")
 }
 
@@ -312,4 +365,80 @@ model UltimoAnalisisAplicado {
   @@id([userId, tickerId])
   @@index([analysisId])
   @@map("ultimo_analisis_aplicado")
+}
+
+model Strategy {
+  id             String            @id @default(cuid())
+  code           String            @unique
+  name           String            @unique
+  description    String?
+  analysisId     String
+  suffix         StrategySuffix
+  entryRule      StrategyEntryRule
+  entryParams    Json              @default("{}")
+  exitTargetType ExitTargetType
+  exitTargetValue Float
+  stopLossType   StopLossType
+  stopLossValue  Float
+  isStandard     Boolean           @default(false)
+  deleted        Boolean           @default(false)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  createdById    String?
+
+  analysis         Analysis          @relation(fields: [analysisId], references: [id])
+  orders           Order[]
+  operations       Operation[]
+  unexecutedOrders UnexecutedOrder[]
+
+  @@unique([analysisId, suffix])
+  @@map("strategies")
+}
+
+model Order {
+  id          String      @id @default(cuid())
+  userId      String
+  tickerId    String
+  strategyId  String
+  analysisId  String
+  targetPrice Float
+  direction   Direction
+  amount      Float       @default(1000)
+  status      OrderStatus @default(PENDING)
+  createdAt   DateTime    @default(now())
+  expiresAt   DateTime
+  executedAt  DateTime?
+
+  user     User     @relation(fields: [userId], references: [id])
+  ticker   Ticker   @relation(fields: [tickerId], references: [id])
+  strategy Strategy @relation(fields: [strategyId], references: [id])
+
+  operation       Operation?
+  unexecutedOrder UnexecutedOrder?
+
+  @@index([status, expiresAt])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("orders")
+}
+
+model UnexecutedOrder {
+  id          String           @id @default(cuid())
+  orderId     String           @unique
+  userId      String
+  tickerId    String
+  strategyId  String
+  analysisId  String
+  targetPrice Float
+  direction   Direction
+  reason      UnexecutedReason
+  createdAt   DateTime
+  expiredAt   DateTime         @default(now())
+
+  order    Order    @relation(fields: [orderId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+  ticker   Ticker   @relation(fields: [tickerId], references: [id])
+  strategy Strategy @relation(fields: [strategyId], references: [id])
+
+  @@index([userId, expiredAt(sort: Desc)])
+  @@map("unexecuted_orders")
 }

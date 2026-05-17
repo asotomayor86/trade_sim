@@ -4,10 +4,21 @@ import { OpenOperationModal } from "@/components/operations/OpenOperationModal"
 import { OperationsTable } from "@/components/operations/OperationsTable"
 import { calcUnrealizedPnL, type Direction } from "@/lib/operations/pnl"
 import { computeSpread } from "@/lib/market-data/spread"
+import Link from "next/link"
 
-export default async function OperationsPage() {
+interface Props {
+  searchParams: Promise<{ filter?: string }>
+}
+
+export default async function OperationsPage({ searchParams }: Props) {
   const session = await requireAuth()
   const userId = session.user.id
+  const { filter } = await searchParams
+  const playbookOnly = filter === "playbook"
+
+  const opFilter = playbookOnly
+    ? { userId, orderId: { not: null as string | null } }
+    : { userId }
 
   const [tickers, analyses, openOps, closedOps] = await Promise.all([
     prisma.ticker.findMany({
@@ -16,25 +27,27 @@ export default async function OperationsPage() {
       select: { id: true, symbol: true, name: true, sector: true, spreadOverridePct: true },
     }),
     prisma.analysis.findMany({
-      where: { OR: [{ userId }, { isStandard: true }], deleted: false },
+      where: { deleted: false },
       orderBy: [{ isStandard: "desc" }, { name: "asc" }],
       select: { id: true, name: true, bias: true, isStandard: true },
     }),
     prisma.operation.findMany({
-      where: { userId, closedAt: null },
+      where: { ...opFilter, closedAt: null },
       orderBy: { openedAt: "desc" },
       include: {
         ticker: { select: { id: true, symbol: true, name: true, sector: true, spreadOverridePct: true } },
         analysis: { select: { name: true } },
+        strategy: { select: { code: true } },
       },
     }),
     prisma.operation.findMany({
-      where: { userId, closedAt: { not: null } },
+      where: { ...opFilter, closedAt: { not: null } },
       orderBy: { closedAt: "desc" },
       take: 50,
       include: {
         ticker: { select: { symbol: true, name: true } },
         analysis: { select: { name: true } },
+        strategy: { select: { code: true } },
       },
     }),
   ])
@@ -67,8 +80,25 @@ export default async function OperationsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900">Operaciones</h1>
-        <OpenOperationModal tickers={tickers} analyses={analyses} />
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold text-slate-900">Operaciones</h1>
+          {/* Playbook filter toggle */}
+          <div className="flex rounded-md border border-slate-200 overflow-hidden text-sm">
+            <Link
+              href="/app/operations"
+              className={`px-3 py-1 ${!playbookOnly ? "bg-blue-600 text-white" : "bg-white text-slate-500 hover:bg-slate-50"}`}
+            >
+              Todas
+            </Link>
+            <Link
+              href="/app/operations?filter=playbook"
+              className={`px-3 py-1 ${playbookOnly ? "bg-blue-600 text-white" : "bg-white text-slate-500 hover:bg-slate-50"}`}
+            >
+              Playbook
+            </Link>
+          </div>
+        </div>
+        {!playbookOnly && <OpenOperationModal tickers={tickers} analyses={analyses} />}
       </div>
 
       <OperationsTable open={openWithPnl} closed={closedOps} />

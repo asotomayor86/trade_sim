@@ -4,11 +4,16 @@ import { type Role } from "@prisma/client"
 const navItems = [
   { href: "/app/dashboard", label: "Dashboard" },
   { href: "/app/chart", label: "Gráficos" },
-  { href: "/app/analyses", label: "Análisis" },
   { href: "/app/operations", label: "Operaciones" },
+  { href: "/app/orders", label: "Órdenes" },
   { href: "/app/alerts", label: "Alertas" },
   { href: "/app/ranking", label: "Ranking" },
   { href: "/app/users", label: "Usuarios" },
+]
+
+const playbookItems = [
+  { href: "/app/analyses", label: "Análisis" },
+  { href: "/app/playbook/strategies", label: "Estrategias" },
 ]
 
 const adminItems = [
@@ -27,14 +32,24 @@ export function Sidebar({ role }: { role: Role }) {
 
       <nav className="flex flex-1 flex-col gap-1">
         {navItems.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className="rounded-md px-3 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white"
-          >
+          <Link key={item.href} href={item.href}
+            className="rounded-md px-3 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white">
             {item.label}
           </Link>
         ))}
+
+        {/* Playbook section */}
+        <div className="mt-3">
+          <p className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Playbook
+          </p>
+          {playbookItems.map((item) => (
+            <Link key={item.href} href={item.href}
+              className="rounded-md px-3 py-2 pl-5 text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white flex">
+              {item.label}
+            </Link>
+          ))}
+        </div>
 
         {role === "ADMIN" && (
           <>
@@ -43,11 +58,8 @@ export function Sidebar({ role }: { role: Role }) {
               Admin
             </p>
             {adminItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="rounded-md px-3 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white"
-              >
+              <Link key={item.href} href={item.href}
+                className="rounded-md px-3 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white">
                 {item.label}
               </Link>
             ))}

@@ -4,9 +4,11 @@ import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { ChartContainer } from "./ChartContainer"
 import { AnalysisSelector } from "./AnalysisSelector"
+import { StrategySelector } from "./StrategySelector"
+import { LaunchOrderModal } from "./LaunchOrderModal"
 import type { CandlePoint } from "@/lib/indicators/calculations"
 import type { IndicatorConfig } from "@/lib/indicators/engine"
-import type { AnalysisSummary } from "@/app/app/chart/[symbol]/page"
+import type { AnalysisSummary, StrategySummary } from "@/app/app/chart/[symbol]/page"
 import type { LastAppliedResult } from "@/actions/ultimo-analisis"
 import { saveDrawings, loadDrawings } from "@/actions/drawings"
 
@@ -23,9 +25,10 @@ interface Props {
   analyses: AnalysisSummary[]
   initialLastApplied: LastAppliedResult | null
   userId: string
+  strategies: StrategySummary[]
 }
 
-export function ChartPage({ ticker, tickers, analyses, initialLastApplied }: Props) {
+export function ChartPage({ ticker, tickers, analyses, initialLastApplied, strategies }: Props) {
   const router = useRouter()
   const [timeframe, setTimeframe] = useState<TF>("1D")
   const [candles, setCandles] = useState<CandlePoint[]>([])
@@ -45,6 +48,15 @@ export function ChartPage({ ticker, tickers, analyses, initialLastApplied }: Pro
   const [activeIndicators, setActiveIndicators] = useState<IndicatorConfig[]>(
     initialLastApplied?.indicators ?? []
   )
+
+  // Active strategy + order modal
+  const [activeStrategy, setActiveStrategy] = useState<StrategySummary | null>(null)
+  const [showOrderModal, setShowOrderModal] = useState(false)
+
+  // Filter strategies by active analysis
+  const activeStrategies = activeAnalysisId
+    ? strategies.filter((s) => s.analysisId === activeAnalysisId)
+    : []
 
   // Fetch candles
   const fetchCandles = useCallback(async () => {
@@ -82,12 +94,14 @@ export function ChartPage({ ticker, tickers, analyses, initialLastApplied }: Pro
     setActiveAnalysisId(id)
     setActiveAnalysisName(name)
     setActiveIndicators(indicators)
+    setActiveStrategy(null) // reset strategy when analysis changes
   }
 
   const handleRemoveAnalysis = () => {
     setActiveAnalysisId(null)
     setActiveAnalysisName(null)
     setActiveIndicators([])
+    setActiveStrategy(null)
   }
 
   const filtered = tickers.filter(
@@ -148,6 +162,25 @@ export function ChartPage({ ticker, tickers, analyses, initialLastApplied }: Pro
           onApply={handleApplyAnalysis}
           onRemove={handleRemoveAnalysis}
         />
+
+        {/* Strategy selector (only shown when an analysis is active and it has strategies) */}
+        {activeAnalysisId && activeStrategies.length > 0 && (
+          <StrategySelector
+            strategies={activeStrategies}
+            activeStrategyId={activeStrategy?.id ?? null}
+            onSelect={setActiveStrategy}
+          />
+        )}
+
+        {/* Launch order button */}
+        {activeStrategy && (
+          <button
+            onClick={() => setShowOrderModal(true)}
+            className="rounded-md bg-emerald-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-600"
+          >
+            ⚡ Lanzar orden
+          </button>
+        )}
 
         {/* Timeframe */}
         <div className="flex overflow-hidden rounded-md border border-slate-700">
@@ -220,6 +253,17 @@ export function ChartPage({ ticker, tickers, analyses, initialLastApplied }: Pro
         <div className="flex h-48 items-center justify-center text-slate-400">
           Sin datos de velas. El cron de precios aún no ha descargado el histórico de este ticker.
         </div>
+      )}
+
+      {/* Launch order modal */}
+      {showOrderModal && activeStrategy && (
+        <LaunchOrderModal
+          strategy={activeStrategy}
+          tickerId={ticker.id}
+          tickerSymbol={ticker.symbol}
+          currentPrice={hoveredPrice}
+          onClose={() => setShowOrderModal(false)}
+        />
       )}
     </div>
   )

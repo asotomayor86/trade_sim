@@ -1,6 +1,6 @@
 # trade_sim — Architecture & Design Reference
 
-> Versión: 1.3 · Fecha: 2026-05-17
+> Versión: 1.4 · Fecha: 2026-05-17
 > Propósito: documento de referencia para futuros chats con Claude. Pasar junto con `backlog.md` al inicio de cada sesión.
 > Repositorio: https://github.com/asotomayor86/trade_sim
 
@@ -727,6 +727,8 @@ En el listado de usuarios (F10), usuarios con N < 5 aparecen al final sin métri
 | F8 | PWA: Manifest + SW + Instalación | ✅ Completa |
 | F9 | Tests críticos + Seguridad + Despliegue | ✅ Completa |
 | F10 | Gestión y perfil de usuarios | 🔲 Pendiente |
+| F11 | Sistema de Análisis Técnico (motor indicadores, UltimoAnalisisAplicado) | ✅ Completa |
+| F12 | Playbook: Estrategias + Órdenes ficticias automáticas (cron 5 min) | ✅ Completa |
 
 ---
 
@@ -941,3 +943,156 @@ Cliente: ChartPage
 | `src/app/app/analyses/page.tsx` | Lista global, contador X/15, sin separación standard/mine |
 | `src/app/app/analyses/new/page.tsx` | Bloquea si límite alcanzado |
 | `src/app/app/analyses/[id]/page.tsx` | Editor abierto a todos, sin check de owner |
+
+---
+
+## 19. F12 — Playbook, Estrategias y Trading Ficticio
+
+### 19.1 Decisiones de diseño
+
+| # | Decisión | Razonamiento |
+|---|---|---|
+| 7.26 | **Importe fijo 1.000$ por orden** | Uniformidad para comparar resultados. Las ops manuales legacy siguen usando 100$. |
+| 7.27 | **Validez 7 días naturales** | Constante del sistema, no configurable. Si el precio no se alcanza en 7 días → EXPIRED. |
+| 7.28 | **Granularidad de detección 5 min** | Alpaca free tier soporta 1-min; fallback conservador en GitHub Actions `*/5 * * * *` para no exceder minutos gratuitos. En código se piden velas `1Min` de los últimos 5 min. |
+| 7.29 | **SL gana si TP y SL en misma vela** | Criterio conservador estándar en backtesting. Evita sobreestimar resultados. |
+| 7.30 | **Cierre 100% automático** | No hay cierre manual ni cancelación de órdenes. Las órdenes PENDING solo se mueven a EXECUTED o EXPIRED por el cron. |
+| 7.31 | **Permisos abiertos en estrategias** | Igual que análisis en F11: cualquier usuario puede crear/editar/borrar cualquier estrategia. |
+| 7.32 | **Sin límite numérico de estrategias** | A diferencia del límite de 15 análisis, las estrategias no tienen cota. |
+| 7.33 | **Codes inmutables tras creación** | `Analysis.code` y `Strategy.code` no se pueden editar. El code identifica la estrategia en operaciones y órdenes. |
+| 7.34 | **TP/SL calculados al ejecutar la orden** | Al crear la Operation desde la Order, se calculan `tpPrice` y `slPrice` concretos. Para `BOLLINGER_MIDDLE` y `VWAP_TOUCH` se usa el valor actual de la BD; si no hay datos, se usa un porcentaje de fallback. |
+| 7.35 | **Doble evaluación de TP/SL** | El cron `refresh-prices` (15 min) ya evalúa TP/SL de todas las ops abiertas. El cron `evaluate-orders` (5 min) lo hace solo para ops con `orderId IS NOT NULL`. La primera en actuar gana; la otra encontrará la op ya cerrada. |
+| 7.36 | **Analysis.code nullable en BD** | Se añadió como `String? @unique` para no romper análisis existentes sin code. Los análisis nuevos siempre reciben un code; los viejos se actualizan con el seed. |
+
+### 19.2 Nuevos modelos de datos
+
+#### Analysis (cambios F12)
+```
++ code  String? @unique  — código autogenerado inmutable (TND, RSB, BRK, SCP, VWP…)
+```
+
+#### Strategy (nuevo)
+```
+id              String          PK
+code            String          UNIQUE  — formato: {ANALYSIS_CODE}-{SUFFIX}, ej. RSB-BNC
+name            String          UNIQUE  — nombre legible
+description     String?
+analysisId      String          FK analyses.id
+suffix          StrategySuffix  — LONG | SHORT | BNC | UP | DN
+entryRule       StrategyEntryRule
+entryParams     Json            @default("{}")
+exitTargetType  ExitTargetType  — PERCENT_GAIN | BOLLINGER_MIDDLE | VWAP_TOUCH
+exitTargetValue Float
+stopLossType    StopLossType    — PERCENT | BOLLINGER_MIDDLE
+stopLossValue   Float
+isStandard      Boolean
+deleted         Boolean
+createdAt, updatedAt
+createdById     String?
+
+UNIQUE: (analysisId, suffix)   — un sufijo por análisis
+```
+
+#### Order (nuevo)
+```
+id          String       PK
+userId, tickerId, strategyId, analysisId  — FKs (analysisId denormalized para trazabilidad)
+targetPrice Float        — precio objetivo de entrada
+direction   Direction    — LONG | SHORT
+amount      Float        @default(1000)
+status      OrderStatus  — PENDING → EXECUTED | EXPIRED
+createdAt, expiresAt (createdAt + 7d), executedAt?
+
+INDEX: (status, expiresAt)   — para el cron: pendientes no expiradas
+INDEX: (userId, createdAt DESC)
+```
+
+#### UnexecutedOrder (nuevo)
+```
+id, orderId (FK, UNIQUE), userId, tickerId, strategyId, analysisId
+targetPrice, direction
+reason      UnexecutedReason  — EXPIRED
+createdAt (from Order.createdAt), expiredAt @default(now())
+
+INDEX: (userId, expiredAt DESC)
+```
+
+#### Operation (extensiones F12)
+```
++ orderId          String?  @unique  — FK orders.id; null para ops manuales
++ strategyId       String?           — FK strategies.id; null para ops manuales
++ targetPriceExit  Float?            — TP concreto calculado al ejecutar la orden
++ closedByStrategy Boolean  @default(false)  — true si cerró por evaluate-orders cron
+```
+
+### 19.3 Códigos automáticos
+
+#### Código de análisis
+- **Algoritmo:** normalizar nombre (NFD, lowercase), eliminar tildes y stop words, extraer consonantes en orden concatenando todas las palabras, tomar primeras 3 letras en mayúsculas.
+- **Colisiones:** TND → TND2 → TND3…
+- Implementado en `src/lib/playbook/codes.ts` → `generateAnalysisCode(name, existingCodes[])`.
+
+#### Código de estrategia
+- Formato fijo: `{ANALYSIS_CODE}-{SUFFIX}`, e.g. `RSB-BNC`.
+- `generateStrategyCode(analysisCode, suffix)`.
+
+### 19.4 Catálogo de estrategias predefinidas
+
+| Code | Análisis | Sufijo | Regla entrada | Objetivo | Stop |
+|------|----------|--------|---------------|----------|------|
+| TND-LONG | TND | LONG | EMA_CROSS_UP | PERCENT_GAIN 3% | PERCENT 1.5% |
+| TND-SHORT | TND | SHORT | EMA_CROSS_DOWN | PERCENT_GAIN 3% | PERCENT 1.5% |
+| RSB-BNC | RSB | BNC | RSI_OVERSOLD_BB_LOWER | BOLLINGER_MIDDLE | PERCENT 2% |
+| BRK-UP | BRK | UP | BB_BREAKOUT_UP_VOLUME | PERCENT_GAIN 4% | BOLLINGER_MIDDLE |
+| BRK-DN | BRK | DN | BB_BREAKOUT_DOWN_VOLUME | PERCENT_GAIN 4% | BOLLINGER_MIDDLE |
+| SCP-LONG | SCP | LONG | EMA_STOCH_CROSS | PERCENT_GAIN 1% | PERCENT 0.5% |
+| VWP-BNC | VWP | BNC | VWAP_DEVIATION_RSI | VWAP_TOUCH | PERCENT 1.5% |
+
+### 19.5 Flujo de trading ficticio
+
+```
+Usuario selecciona análisis en gráfico
+  → StrategySelector muestra estrategias del análisis activo
+  → "⚡ Lanzar orden" abre LaunchOrderModal
+     → input: precio objetivo de entrada
+     → preview: TP/SL calculados, importe $1.000, validez 7 días
+     → SA createOrder() → Order (PENDING, expiresAt = now + 7d)
+
+GitHub Actions (*/5 min)
+  → GET /api/cron/evaluate-orders [Bearer CRON_SECRET]
+    → Fetch vela 1-min de Alpaca para cada ticker con órdenes/ops activas
+    → Para cada Order PENDING:
+        expiresAt < now → EXPIRED + crear UnexecutedOrder
+        targetPrice en [low,high] → EXECUTED + crear Operation (nominal=1000)
+          → computeExitPrices() → tpPrice, slPrice concretos
+    → Para cada Operation con orderId:
+        evaluateOperation(op, candle)
+        → CLOSE_SL / CLOSE_TP → cerrar con closedByStrategy=true
+        → HOLD → continúa
+```
+
+### 19.6 Nuevos archivos F12
+
+| Archivo | Rol |
+|---------|-----|
+| `src/lib/playbook/codes.ts` | Generador de códigos análisis/estrategia |
+| `src/lib/playbook/codes.test.ts` | Tests del generador |
+| `src/lib/orders/evaluator.ts` | Motor evaluador puro (evaluateOrder, evaluateOperation, computeExitPrices) |
+| `src/lib/orders/evaluator.test.ts` | 20 tests unitarios incl. caso SL gana misma vela |
+| `src/actions/strategies.ts` | CRUD strategies (create/update/delete/clone) |
+| `src/actions/orders.ts` | createOrder (validez 7d, importe 1000) |
+| `src/app/api/cron/evaluate-orders/route.ts` | Cron handler: evaluación órdenes y ops |
+| `src/app/app/playbook/strategies/page.tsx` | Listado de estrategias |
+| `src/app/app/playbook/strategies/new/page.tsx` | Formulario nueva estrategia |
+| `src/app/app/playbook/strategies/[id]/page.tsx` | Edición estrategia |
+| `src/app/app/playbook/analyses/page.tsx` | Redirect → /app/analyses |
+| `src/app/app/orders/page.tsx` | Página órdenes (3 secciones) |
+| `src/components/playbook/StrategyEditor.tsx` | Editor de estrategia (formulario) |
+| `src/components/playbook/CloneStrategyButton.tsx` | Botón clonar |
+| `src/components/playbook/DeleteStrategyButton.tsx` | Botón borrar |
+| `src/components/chart/StrategySelector.tsx` | Dropdown estrategias en gráfico |
+| `src/components/chart/LaunchOrderModal.tsx` | Modal lanzar orden |
+| `prisma/seedAnalysesV2.ts` | 5 análisis con codes |
+| `prisma/seedStrategies.ts` | 7 estrategias predefinidas |
+| `prisma/migrations/20260517120000_f12_playbook/` | Migración SQL |
+| `.github/workflows/evaluate-orders.yml` | GitHub Action */5 min |
