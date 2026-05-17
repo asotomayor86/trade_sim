@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/prisma"
 import Link from "next/link"
 import { DeleteStrategyButton } from "@/components/playbook/DeleteStrategyButton"
 import { CloneStrategyButton } from "@/components/playbook/CloneStrategyButton"
+import { DownloadButton } from "@/components/admin/DownloadButton"
 
 const SUFFIX_BADGE: Record<string, string> = {
   LONG: "bg-green-100 text-green-700",
@@ -36,10 +37,17 @@ export default async function StrategiesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-slate-900">ESTRATEGIAS</h1>
-        <Link href="/app/playbook/strategies/new"
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500">
-          + Nueva estrategia
-        </Link>
+        <div className="flex items-center gap-2">
+          <DownloadButton
+            href="/api/admin/playbook/export/strategies"
+            label="↓ Exportar todo"
+            className="rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-500 hover:bg-slate-50"
+          />
+          <Link href="/app/playbook/strategies/new"
+            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500">
+            + Nueva estrategia
+          </Link>
+        </div>
       </div>
 
       {strategies.length === 0 ? (
@@ -97,6 +105,12 @@ export default async function StrategiesPage() {
                       <Link href={`/app/playbook/strategies/${s.id}`} className="text-xs text-blue-600 hover:text-blue-500">Editar</Link>
                       <CloneStrategyButton strategyId={s.id} />
                       {s._count.orders === 0 && <DeleteStrategyButton strategyId={s.id} />}
+                      <DownloadButton
+                        href={`/api/admin/playbook/export/strategy/${s.id}`}
+                        label="↓"
+                        title="Exportar CSV"
+                        className="text-xs text-slate-400 hover:text-blue-500"
+                      />
                     </div>
                   </td>
                 </tr>

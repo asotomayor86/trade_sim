@@ -21,6 +21,7 @@ const adminItems = [
   { href: "/admin/invitations", label: "INVITACIONES" },
   { href: "/admin/tickers", label: "TICKERS" },
   { href: "/admin/audit-log", label: "AUDIT LOG" },
+  { href: "/admin/playbook", label: "IMPORT / EXPORT" },
 ]
 
 export function Sidebar({ role }: { role: Role }) {

@@ -592,6 +592,84 @@ F4 ✓ → F5 ✓ → F6 ✓ → F7 ✓ → F8 ✓ → F9 ✓
 
 ---
 
+## F13 — Importación/Exportación CSV de Análisis y Estrategias
+
+> Objetivo: admin exporta/importa análisis y estrategias como CSV individuales con validación en dos pasos (preview + commit). ZIP para exportación masiva. Documento de especificación del formato.
+> Diseño completo en `architecture.md` §20.
+
+### F13-01 · Generador y parser CSV
+
+- [x] Crear `src/lib/playbook/csv-codec.ts` con funciones puras:
+  - [x] `serializeAnalysisToCsv(analysis): string`
+  - [x] `serializeStrategyToCsv(strategy): string`
+  - [x] `parseAnalysisCsv(content): ParseResult<ParsedAnalysis>`
+  - [x] `parseStrategyCsv(content): ParseResult<ParsedStrategy>`
+- [x] UTF-8 sin BOM, separador coma, comillas dobles con escape `""`
+- [x] Tests unitarios en `csv-codec.test.ts`: casos válidos, comillas en campos, JSON malformado, campos faltantes
+- [AC] Funciones puras; roundtrip serialize→parse produce el mismo objeto ✓
+
+### F13-02 · Route Handlers de exportación
+
+- [x] `GET /api/admin/playbook/export/analyses` — ZIP con todos los `analysis_*.csv`
+- [x] `GET /api/admin/playbook/export/strategies` — ZIP con todos los `strategy_*.csv`
+- [x] `GET /api/admin/playbook/export/all` — ZIP combinado `playbook.zip`
+- [x] `GET /api/admin/playbook/export/analysis/[id]` — CSV individual (descarga directa)
+- [x] `GET /api/admin/playbook/export/strategy/[id]` — CSV individual (descarga directa)
+- [x] Instalar `jszip`; todos protegidos con `requireAdmin()`
+- [AC] Descargas generan archivos correctos; ZIP descomprimible ✓
+
+### F13-03 · RH preview de importación (paso 1 — dry-run)
+
+- [x] `POST /api/admin/playbook/import/preview` — recibe FormData con N archivos CSV
+- [x] Detecta tipo por nombre de archivo (`analysis_*.csv` vs `strategy_*.csv`)
+- [x] Valida sintaxis, tipos, FKs (`analysisCode` debe existir en BD o en el lote)
+- [x] Valida límite ≤ 15 análisis (actuales + nuevos del lote)
+- [x] Devuelve JSON: `{ analysesToCreate, analysesToSkip, strategiesToCreate, strategiesToSkip, errors }`
+- [x] Sin tocar BD; protegido con `requireAdmin()`
+- [AC] Preview correcto; ningún cambio persistido ✓
+
+### F13-04 · RH commit de importación (paso 2 — transacción)
+
+- [x] `POST /api/admin/playbook/import/commit` — re-valida + aplica en transacción Prisma
+- [x] Crea análisis primero, luego estrategias (para que las FKs existan)
+- [x] Si algo falla → rollback completo
+- [x] Devuelve `{ analysesCreated, strategiesCreated }`
+- [x] Protegido con `requireAdmin()`
+- [AC] Importación atómica; error parcial → rollback ✓
+
+### F13-05 · UI de exportación
+
+- [x] `/app/playbook/analyses/page.tsx`: botón "Exportar todo (.zip)" + icono de descarga por fila
+- [x] `/app/playbook/strategies/page.tsx`: idem
+- [x] `/admin/playbook/import/page.tsx`: botones "Exportar análisis", "Exportar estrategias", "Exportar todo"
+- [AC] Botones funcionales; descargas correctas ✓
+
+### F13-06 · UI de importación con preview de 2 pasos
+
+- [x] `/admin/playbook/import/page.tsx` (nueva página admin):
+  - [x] Input `<file multiple accept=".csv">` para subir N archivos
+  - [x] Botón "Validar" → llama preview RH, muestra resumen en 4 secciones
+  - [x] Errores bloqueantes en rojo; botón "Confirmar" deshabilitado si hay errores
+  - [x] Botón "Confirmar importación" → llama commit RH, muestra resultado
+- [x] Enlace "Import/Export" en sidebar admin
+- [AC] Flujo 2 pasos completo; UX clara ✓
+
+### F13-07 · Documento de especificación
+
+- [x] Crear `docs/csv-format.md` con convenciones, esquemas, ejemplos y reglas completas
+- [AC] Documento autocontenido; un humano puede crear un CSV válido a mano ✓
+
+### F13-08 · Tests de integración CSV
+
+- [x] Roundtrip análisis: serialize → parse → mismos datos
+- [x] Roundtrip estrategia: serialize → parse → mismos datos
+- [x] Skip por code repetido detectado en preview
+- [x] Error FK rota (analysisCode inexistente) detectado en preview
+- [x] Rechazo por límite 15 análisis
+- [AC] Suite cubre escenarios clave; `npm test` pasa ✓
+
+---
+
 ## Orden de ejecución recomendado
 
 ```
