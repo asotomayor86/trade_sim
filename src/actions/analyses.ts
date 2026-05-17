@@ -4,15 +4,17 @@ import { prisma } from "@/lib/db/prisma"
 import { requireAuth } from "@/lib/auth/session"
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
-import { generateAnalysisName, type Bias, type IndicatorCfg } from "@/lib/analyses/naming"
-import { z } from "zod"
+import type { IndicatorTipo } from "@/lib/indicators/engine"
 
-// ---- Types shared with forms ----
+// ---- Public types ----
 
 export interface IndicatorInput {
-  type: string
-  params: Record<string, number>
+  localId?: string
+  type: IndicatorTipo
+  params: Record<string, unknown>
   color?: string
+  lineWidth?: number
+  lineStyle?: number
   pane: number
 }
 
@@ -24,59 +26,62 @@ export interface RuleInput {
 }
 
 export interface AnalysisInput {
-  name?: string
-  nameCustom: boolean
-  bias: Bias
+  name: string
+  descripcion?: string
+  bias?: string
   indicators: IndicatorInput[]
-  rules: RuleInput[]
+  rules?: RuleInput[]
 }
 
-const biasEnum = z.enum(["BULLISH", "BEARISH", "NEUTRAL"])
+const MAX_ANALYSES = 15
 
 // ---- Helpers ----
 
-async function assertOwner(analysisId: string, userId: string) {
-  const a = await prisma.analysis.findUnique({ where: { id: analysisId } })
-  if (!a || a.isStandard) throw new Error("No puedes editar este análisis")
-  if (a.userId !== userId) throw new Error("No autorizado")
-  return a
+async function assertNameAvailable(name: string, excludeId?: string): Promise<void> {
+  const existing = await prisma.analysis.findFirst({
+    where: { name: name.trim(), deleted: false, ...(excludeId ? { NOT: { id: excludeId } } : {}) },
+  })
+  if (existing) throw new Error(`Ya existe un análisis llamado "${name.trim()}"`)
 }
 
-function buildName(input: AnalysisInput): string {
-  if (input.nameCustom && input.name?.trim()) return input.name.trim()
-  const trigger =
-    input.rules.find((r) => r.type === "ENTRY")?.description ?? ""
-  return generateAnalysisName(
-    input.bias,
-    input.indicators as IndicatorCfg[],
-    trigger
-  )
+async function assertUnderLimit(excludeId?: string): Promise<void> {
+  const count = await prisma.analysis.count({ where: { deleted: false } })
+  const wouldExceed = excludeId ? false : count >= MAX_ANALYSES
+  if (wouldExceed) {
+    throw new Error(`Límite de ${MAX_ANALYSES} análisis alcanzado. Borra o duplica uno existente.`)
+  }
 }
 
 // ---- CRUD ----
 
 export async function createAnalysis(input: AnalysisInput) {
   const session = await requireAuth()
-  const userId = session.user.id
+  const name = input.name.trim()
+  if (!name) throw new Error("El nombre es obligatorio")
 
-  const name = buildName(input)
+  await assertUnderLimit()
+  await assertNameAvailable(name)
 
   const analysis = await prisma.analysis.create({
     data: {
-      userId,
+      userId: session.user.id,
       name,
-      nameCustom: input.nameCustom,
-      bias: input.bias,
+      descripcion: input.descripcion?.trim() || null,
+      nameCustom: true,
+      bias: input.bias ?? "NEUTRAL",
       indicators: {
         create: input.indicators.map((i) => ({
+          localId: i.localId ?? crypto.randomUUID(),
           type: i.type,
-          params: i.params,
+          params: i.params as object,
           color: i.color ?? null,
+          lineWidth: i.lineWidth ?? 1,
+          lineStyle: i.lineStyle ?? 0,
           pane: i.pane,
         })),
       },
       rules: {
-        create: input.rules.map((r) => ({
+        create: (input.rules ?? []).map((r) => ({
           type: r.type,
           direction: r.direction ?? null,
           description: r.description,
@@ -91,23 +96,15 @@ export async function createAnalysis(input: AnalysisInput) {
 }
 
 export async function updateAnalysis(id: string, input: AnalysisInput) {
-  const session = await requireAuth()
-  await assertOwner(id, session.user.id)
+  await requireAuth()
+  const name = input.name.trim()
+  if (!name) throw new Error("El nombre es obligatorio")
 
-  const name = buildName(input)
+  const existing = await prisma.analysis.findUnique({ where: { id, deleted: false } })
+  if (!existing) throw new Error("Análisis no encontrado")
 
-  // Check if there are open operations with this analysis
-  const openOps = await prisma.operation.count({
-    where: { analysisId: id, closedAt: null },
-  })
+  await assertNameAvailable(name, id)
 
-  if (openOps > 0) {
-    // Don't change the analysis itself; create a new version and redirect to it
-    await createAnalysis({ ...input, name, nameCustom: input.nameCustom })
-    return
-  }
-
-  // Safe to update in place
   await prisma.$transaction([
     prisma.analysisIndicator.deleteMany({ where: { analysisId: id } }),
     prisma.analysisRule.deleteMany({ where: { analysisId: id } }),
@@ -115,18 +112,21 @@ export async function updateAnalysis(id: string, input: AnalysisInput) {
       where: { id },
       data: {
         name,
-        nameCustom: input.nameCustom,
-        bias: input.bias,
+        descripcion: input.descripcion?.trim() || null,
+        bias: input.bias ?? existing.bias,
         indicators: {
           create: input.indicators.map((i) => ({
+            localId: i.localId ?? crypto.randomUUID(),
             type: i.type,
-            params: i.params,
+            params: i.params as object,
             color: i.color ?? null,
+            lineWidth: i.lineWidth ?? 1,
+            lineStyle: i.lineStyle ?? 0,
             pane: i.pane,
           })),
         },
         rules: {
-          create: input.rules.map((r) => ({
+          create: (input.rules ?? []).map((r) => ({
             type: r.type,
             direction: r.direction ?? null,
             description: r.description,
@@ -139,41 +139,57 @@ export async function updateAnalysis(id: string, input: AnalysisInput) {
 
   revalidatePath("/app/analyses")
   revalidatePath(`/app/analyses/${id}`)
+  redirect(`/app/analyses/${id}`)
 }
 
 export async function deleteAnalysis(id: string) {
-  const session = await requireAuth()
-  await assertOwner(id, session.user.id)
+  await requireAuth()
 
-  const hasOps = await prisma.operation.count({ where: { analysisId: id } })
-  if (hasOps > 0) throw new Error("No puedes borrar un análisis con operaciones")
+  const analysis = await prisma.analysis.findUnique({ where: { id, deleted: false } })
+  if (!analysis) throw new Error("Análisis no encontrado")
 
+  // Soft delete — UltimoAnalisisAplicado cleanup happens lazily when charts are opened
   await prisma.analysis.update({ where: { id }, data: { deleted: true } })
+
   revalidatePath("/app/analyses")
   redirect("/app/analyses")
 }
 
 export async function cloneAnalysis(sourceId: string) {
   const session = await requireAuth()
-  const userId = session.user.id
 
   const source = await prisma.analysis.findUniqueOrThrow({
     where: { id: sourceId },
     include: { indicators: true, rules: true },
   })
 
+  await assertUnderLimit()
+
+  // Find a unique name for the clone
+  let cloneName = `${source.name} (copia)`
+  let suffix = 2
+  while (true) {
+    const exists = await prisma.analysis.findFirst({ where: { name: cloneName, deleted: false } })
+    if (!exists) break
+    cloneName = `${source.name} (copia ${suffix++})`
+  }
+
   const clone = await prisma.analysis.create({
     data: {
-      userId,
-      name: `${source.name} (copia)`,
+      userId: session.user.id,
+      name: cloneName,
+      descripcion: source.descripcion,
       nameCustom: true,
       bias: source.bias,
       isStandard: false,
       indicators: {
         create: source.indicators.map((i) => ({
+          localId: crypto.randomUUID(),
           type: i.type,
-          params: i.params as Record<string, number>,
+          params: i.params as object,
           color: i.color,
+          lineWidth: i.lineWidth,
+          lineStyle: i.lineStyle,
           pane: i.pane,
         })),
       },

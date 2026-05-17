@@ -1,4 +1,4 @@
-import { EMA, SMA, RSI, MACD, BollingerBands, ATR, ADX } from "technicalindicators"
+import { EMA, SMA, RSI, MACD, BollingerBands, ATR, ADX, Stochastic } from "technicalindicators"
 
 export interface CandlePoint {
   time: number // Unix seconds
@@ -156,4 +156,75 @@ export function calcVolumeSMA(candles: CandlePoint[], period: number): LinePoint
   if (candles.length < period) return []
   const values = SMA.calculate({ period, values: candles.map((c) => c.volume) })
   return align(candles, values)
+}
+
+export type VWAPReset = "sesion" | "diario" | "semanal"
+
+function getVWAPResetKey(date: Date, reset: VWAPReset): string {
+  const y = date.getUTCFullYear()
+  const m = date.getUTCMonth()
+  const d = date.getUTCDate()
+  if (reset === "semanal") {
+    // Reset on Monday — compute ISO week
+    const day = date.getUTCDay() || 7 // 1=Mon … 7=Sun
+    const monday = new Date(Date.UTC(y, m, d - (day - 1)))
+    return `${monday.getUTCFullYear()}-W${monday.getUTCMonth()}-${monday.getUTCDate()}`
+  }
+  // "sesion" and "diario" both reset per calendar day
+  return `${y}-${m}-${d}`
+}
+
+export function calcVWAP(candles: CandlePoint[], reset: VWAPReset = "diario"): LinePoint[] {
+  let cumTPV = 0
+  let cumVol = 0
+  let lastKey: string | null = null
+
+  return candles.map((c) => {
+    const key = getVWAPResetKey(new Date(c.time * 1000), reset)
+    if (key !== lastKey) {
+      cumTPV = 0
+      cumVol = 0
+      lastKey = key
+    }
+    const tp = (c.high + c.low + c.close) / 3
+    cumTPV += tp * c.volume
+    cumVol += c.volume
+    return { time: c.time, value: cumVol === 0 ? c.close : cumTPV / cumVol }
+  })
+}
+
+export interface StochPoint {
+  time: number
+  k: number
+  d: number
+}
+
+export function calcStochastic(
+  candles: CandlePoint[],
+  periodK: number,
+  periodD: number,
+  smoothing: number,
+): StochPoint[] {
+  if (candles.length < periodK + periodD + smoothing) return []
+  const raw = Stochastic.calculate({
+    high: candles.map((c) => c.high),
+    low: candles.map((c) => c.low),
+    close: candles.map((c) => c.close),
+    period: periodK,
+    signalPeriod: periodD,
+  })
+  // Apply smoothing to %K (full stochastic)
+  if (smoothing > 1 && raw.length >= smoothing) {
+    const smoothedK = SMA.calculate({ period: smoothing, values: raw.map((v) => v.k) })
+    const smoothedD = SMA.calculate({ period: smoothing, values: raw.map((v) => v.d) })
+    const offset = candles.length - raw.length
+    const smoothOffset = raw.length - smoothedK.length
+    return smoothedK.map((k, i) => ({
+      time: candles[offset + smoothOffset + i].time,
+      k,
+      d: smoothedD[i],
+    }))
+  }
+  const offset = candles.length - raw.length
+  return raw.map((v, i) => ({ time: candles[offset + i].time, k: v.k, d: v.d }))
 }

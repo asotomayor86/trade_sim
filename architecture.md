@@ -1,6 +1,6 @@
 # trade_sim — Architecture & Design Reference
 
-> Versión: 1.2 · Fecha: 2026-05-16
+> Versión: 1.3 · Fecha: 2026-05-17
 > Propósito: documento de referencia para futuros chats con Claude. Pasar junto con `backlog.md` al inicio de cada sesión.
 > Repositorio: https://github.com/asotomayor86/trade_sim
 
@@ -832,3 +832,112 @@ El log es visible solo en `/admin/audit-log` (requiere `requireAdmin()`). Se pag
 3. Las decisiones de §7 son finales salvo que se indique lo contrario.
 4. Para F10: los Route Handlers POST de admin devuelven JSON (no usan `redirect()`), para poder recibir la contraseña temporal en el cliente antes de navegar.
 5. La regla ≥1 admin (§7.13) se valida siempre en transacción, no antes.
+
+---
+
+## 18. F11 — Sistema de Análisis Técnico
+
+### 18.1 Decisiones de diseño
+
+| # | Decisión | Razonamiento |
+|---|---|---|
+| 7.16 | **Permisos abiertos en Análisis** | Cualquier usuario puede crear, editar, borrar y duplicar cualquier análisis, incluidos los predefinidos. `isStandard` es solo un badge informativo. |
+| 7.17 | **Límite global de 15 análisis** | Aplicado en `createAnalysis` (cuenta todos los no borrados). El check se hace en código, no en constraint de BD. |
+| 7.18 | **Nombre único global** | Se valida en server action con `findFirst({ where: { name, deleted: false } })`. No hay índice UNIQUE en BD para no bloquear reutilización de nombres de análisis borrados (soft delete). |
+| 7.19 | **Edición viva** | Editar un análisis modifica el mismo registro. La próxima vez que se abra una acción con ese análisis aplicado, se cargará la versión actualizada. |
+| 7.20 | **Fallback silencioso ante borrado** | Si `UltimoAnalisisAplicado` referencia un análisis borrado, la limpieza ocurre la próxima vez que se abre la acción (en `getLastApplied`). No hay cascada activa. |
+| 7.21 | **Indicadores repetibles** | Un mismo análisis puede tener múltiples indicadores del mismo tipo (EMA20 + EMA50 + EMA200). `localId` (UUID) los diferencia dentro del análisis. |
+| 7.22 | **Motor desacoplado** | `src/lib/indicators/engine.ts` recibe `(IndicatorConfig, candles[], symbol, timeframe)` y devuelve `CalcResult`. El `ChartContainer` solo consume `CalcResult`. |
+| 7.23 | **Caché de cálculos** | `Map<string, CalcResult>` a nivel de módulo. Clave: `${symbol}::${timeframe}::${tipo}::${JSON.stringify(params)}`. Se limpia al cambiar velas con `clearIndicatorCache()`. |
+| 7.24 | **Panel overlay vs sub** | Los indicadores con `pane === 0` van en el panel principal (overlay). Los demás van en sub-paneles secuenciales (1, 2, 3…) asignados dinámicamente al renderizar. |
+| 7.25 | **Sin panel manual de indicadores** | El antiguo `IndicatorPanel` (config manual en localStorage) es reemplazado por `AnalysisSelector`. Los indicadores del gráfico siempre provienen de un análisis guardado. |
+
+### 18.2 Nuevos modelos de datos
+
+#### Analysis (cambios F11)
+```
++ descripcion    String?       — descripción libre opcional
+```
+
+#### AnalysisIndicator (cambios F11)
+```
++ localId     String   DEFAULT gen_random_uuid()  — identifica el indicador dentro del análisis
++ lineWidth   Int      DEFAULT 1
++ lineStyle   Int      DEFAULT 0  (0=sólido, 1=punteado, 2=discontinuo)
+```
+
+#### UltimoAnalisisAplicado (nuevo)
+```
+userId       String    — FK users.id
+tickerId     String    — FK tickers.id
+analysisId   String    — FK analyses.id
+appliedAt    DateTime  DEFAULT now()
+
+PK: (userId, tickerId) — un único registro por par usuario+acción
+INDEX: analysisId
+```
+
+### 18.3 Catálogo de indicadores soportados
+
+#### Overlay (panel 0 — eje Y del precio)
+
+| Tipo | Params | Notas |
+|------|--------|-------|
+| `SMA` | `periodo` (int > 0) | Media simple |
+| `EMA` | `periodo` (int > 0) | Media exponencial |
+| `BB` | `periodo` (int > 0), `desviaciones` (float 0.5-5) | Bandas de Bollinger (upper + middle dashed + lower) |
+| `VWAP` | `periodo_reset` (sesion \| diario \| semanal) | VWAP acumulado con reset por período |
+
+#### Sub-panel (eje Y propio)
+
+| Tipo | Params | Notas |
+|------|--------|-------|
+| `RSI` | `periodo`, `nivel_sobrecompra` (50-100), `nivel_sobreventa` (0-50) | Líneas horizontales en OB/OS |
+| `MACD` | `periodo_rapida`, `periodo_lenta`, `periodo_señal` | Histograma + línea MACD + señal |
+| `STOCH` | `periodo_k`, `periodo_d`, `suavizado`, `nivel_sobrecompra`, `nivel_sobreventa` | Full Stochastic (%K suavizado + %D) |
+| `VOL` | `mostrar_media` (bool), `periodo_media` (int) | Histograma de volumen + SMA opcional |
+
+#### Validaciones transversales
+- `MACD`: `periodo_lenta > periodo_rapida`
+- `RSI`, `STOCH`: `nivel_sobrecompra > nivel_sobreventa`
+- `BB`: `desviaciones` entre 0.5 y 5
+- Un análisis puede repetir el mismo tipo con distintos `params` (diferenciados por `localId`)
+
+### 18.4 Flujo Gráficos ↔ Análisis
+
+```
+Servidor: chart/[symbol]/page.tsx
+  ├── prisma.analysis.findMany()          → todos los análisis (no borrados)
+  └── getLastApplied(ticker.id)           → último análisis aplicado para este usuario+ticker
+
+Cliente: ChartPage
+  ├── AnalysisSelector                    → dropdown + botón "Quitar análisis"
+  │   ├── onApply → applyAnalysis()       → UPSERT ultimo_analisis_aplicado
+  │   └── onRemove → removeLastApplied()  → DELETE ultimo_analisis_aplicado
+  └── ChartContainer (activeIndicators[])
+      └── forEach(indicator) → calcIndicator() → CalcResult → series lightweight-charts
+```
+
+### 18.5 Nuevos archivos F11
+
+| Archivo | Rol |
+|---------|-----|
+| `src/lib/indicators/engine.ts` | Motor desacoplado + caché + auto-colores |
+| `src/actions/ultimo-analisis.ts` | getLastApplied / applyAnalysis / removeLastApplied |
+| `src/components/chart/AnalysisSelector.tsx` | Dropdown de análisis + botón Quitar |
+| `prisma/migrations/20260517111433_f11_technical_analysis/` | Migración SQL |
+
+### 18.6 Archivos modificados F11
+
+| Archivo | Cambio |
+|---------|--------|
+| `prisma/schema.prisma` | +descripcion, +localId/lineWidth/lineStyle, +UltimoAnalisisAplicado |
+| `src/lib/indicators/calculations.ts` | +calcVWAP, +calcStochastic |
+| `src/actions/analyses.ts` | Reescrito: permisos abiertos, límite 15, nombre único, localId |
+| `src/components/chart/ChartContainer.tsx` | Reescrito: acepta `IndicatorConfig[]` en vez de `IndicatorState` |
+| `src/components/chart/ChartPage.tsx` | Reescrito: integra AnalysisSelector, gestiona análisis activo |
+| `src/components/analyses/AnalysisEditor.tsx` | Reescrito: nuevos tipos, descripcion, colores auto |
+| `src/app/app/chart/[symbol]/page.tsx` | Pasa analyses + lastApplied al ChartPage |
+| `src/app/app/analyses/page.tsx` | Lista global, contador X/15, sin separación standard/mine |
+| `src/app/app/analyses/new/page.tsx` | Bloquea si límite alcanzado |
+| `src/app/app/analyses/[id]/page.tsx` | Editor abierto a todos, sin check de owner |

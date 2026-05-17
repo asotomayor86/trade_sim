@@ -47,14 +47,15 @@ model User {
   deactivatedAt       DateTime?
   lastPasswordResetAt DateTime?
 
-  analyses      Analysis[]
-  operations    Operation[]
-  alerts        Alert[]
-  drawings      Drawing[]
-  pushSubs      PushSubscription[]
-  notifications Notification[]
-  auditActed    UserAuditLog[]     @relation("AuditActor")
-  auditReceived UserAuditLog[]     @relation("AuditTarget")
+  analyses                Analysis[]
+  operations              Operation[]
+  alerts                  Alert[]
+  drawings                Drawing[]
+  pushSubs                PushSubscription[]
+  notifications           Notification[]
+  auditActed              UserAuditLog[]          @relation("AuditActor")
+  auditReceived           UserAuditLog[]          @relation("AuditTarget")
+  ultimoAnalisisAplicado  UltimoAnalisisAplicado[]
 
   @@map("users")
 }
@@ -96,11 +97,12 @@ model Ticker {
   active            Boolean @default(true)
   spreadOverridePct Float?
 
-  quotes     Quote[]
-  candles    Candle[]
-  operations Operation[]
-  drawings   Drawing[]
-  alerts     Alert[]
+  quotes                 Quote[]
+  candles                Candle[]
+  operations             Operation[]
+  drawings               Drawing[]
+  alerts                 Alert[]
+  ultimoAnalisisAplicado UltimoAnalisisAplicado[]
 
   @@map("tickers")
 }
@@ -142,34 +144,39 @@ model Candle {
 }
 
 model Analysis {
-  id         String   @id @default(cuid())
-  userId     String?
-  name       String
-  nameCustom Boolean  @default(false)
-  bias       String   @default("NEUTRAL")
-  isStandard Boolean  @default(false)
-  deleted    Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id          String   @id @default(cuid())
+  userId      String?
+  name        String
+  descripcion String?
+  nameCustom  Boolean  @default(false)
+  bias        String   @default("NEUTRAL")
+  isStandard  Boolean  @default(false)
+  deleted     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  user       User?               @relation(fields: [userId], references: [id])
-  indicators AnalysisIndicator[]
-  rules      AnalysisRule[]
-  snapshots  AnalysisSnapshot[]
-  operations Operation[]
-  drawings   Drawing[]
-  alerts     Alert[]
+  user                  User?                   @relation(fields: [userId], references: [id])
+  indicators            AnalysisIndicator[]
+  rules                 AnalysisRule[]
+  snapshots             AnalysisSnapshot[]
+  operations            Operation[]
+  drawings              Drawing[]
+  alerts                Alert[]
+  ultimoAnalisisAplicado UltimoAnalisisAplicado[]
 
   @@map("analyses")
 }
 
 model AnalysisIndicator {
-  id         String  @id @default(cuid())
-  analysisId String
-  type       String
-  params     Json
-  color      String?
-  pane       Int     @default(0)
+  id          String  @id @default(cuid())
+  analysisId  String
+  localId     String  @default(cuid())
+  type        String
+  params      Json
+  color       String?
+  lineWidth   Int     @default(1)
+  lineStyle   Int     @default(0)
+  pane        Int     @default(0)
 
   analysis Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
 
@@ -290,4 +297,19 @@ model Notification {
   user User @relation(fields: [userId], references: [id])
 
   @@map("notifications")
+}
+
+model UltimoAnalisisAplicado {
+  userId     String
+  tickerId   String
+  analysisId String
+  appliedAt  DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id])
+  ticker   Ticker   @relation(fields: [tickerId], references: [id])
+  analysis Analysis @relation(fields: [analysisId], references: [id])
+
+  @@id([userId, tickerId])
+  @@index([analysisId])
+  @@map("ultimo_analisis_aplicado")
 }

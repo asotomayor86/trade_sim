@@ -1,10 +1,14 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { ChartContainer } from "./ChartContainer"
-import { IndicatorPanel, DEFAULT_INDICATORS, type IndicatorState } from "./IndicatorPanel"
+import { AnalysisSelector } from "./AnalysisSelector"
 import type { CandlePoint } from "@/lib/indicators/calculations"
+import type { IndicatorConfig } from "@/lib/indicators/engine"
+import type { AnalysisSummary } from "@/app/app/chart/[symbol]/page"
+import type { LastAppliedResult } from "@/actions/ultimo-analisis"
+import { saveDrawings, loadDrawings } from "@/actions/drawings"
 
 interface Ticker { id: string; symbol: string; name: string; sector: string }
 
@@ -13,38 +17,34 @@ type TF = (typeof TIMEFRAMES)[number]
 const DRAWING_MODES = ["none", "horizontal"] as const
 type DrawingMode = (typeof DRAWING_MODES)[number]
 
-const LS_KEY = "chart_indicators_v1"
-
-function loadConfig(): IndicatorState {
-  if (typeof window === "undefined") return DEFAULT_INDICATORS
-  try {
-    const raw = localStorage.getItem(LS_KEY)
-    return raw ? { ...DEFAULT_INDICATORS, ...JSON.parse(raw) } : DEFAULT_INDICATORS
-  } catch {
-    return DEFAULT_INDICATORS
-  }
-}
-
 interface Props {
   ticker: Ticker
   tickers: Ticker[]
+  analyses: AnalysisSummary[]
+  initialLastApplied: LastAppliedResult | null
+  userId: string
 }
 
-export function ChartPage({ ticker, tickers }: Props) {
+export function ChartPage({ ticker, tickers, analyses, initialLastApplied }: Props) {
   const router = useRouter()
   const [timeframe, setTimeframe] = useState<TF>("1D")
   const [candles, setCandles] = useState<CandlePoint[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [indicators, setIndicators] = useState<IndicatorState>(loadConfig)
   const [drawingMode, setDrawingMode] = useState<DrawingMode>("none")
   const [hoveredPrice, setHoveredPrice] = useState<number | null>(null)
   const [search, setSearch] = useState("")
 
-  // Persist indicator config
-  useEffect(() => {
-    localStorage.setItem(LS_KEY, JSON.stringify(indicators))
-  }, [indicators])
+  // Active analysis state
+  const [activeAnalysisId, setActiveAnalysisId] = useState<string | null>(
+    initialLastApplied?.analysisId ?? null
+  )
+  const [activeAnalysisName, setActiveAnalysisName] = useState<string | null>(
+    initialLastApplied?.analysisName ?? null
+  )
+  const [activeIndicators, setActiveIndicators] = useState<IndicatorConfig[]>(
+    initialLastApplied?.indicators ?? []
+  )
 
   // Fetch candles
   const fetchCandles = useCallback(async () => {
@@ -52,23 +52,21 @@ export function ChartPage({ ticker, tickers }: Props) {
     setError(null)
     try {
       const from = new Date()
-      from.setFullYear(from.getFullYear() - (timeframe === "1D" ? 2 : 0))
-      if (timeframe === "1H") from.setDate(from.getDate() - 90) // 90 days of hourly
+      if (timeframe === "1D") from.setFullYear(from.getFullYear() - 2)
+      else from.setDate(from.getDate() - 90)
 
       const res = await fetch(
         `/api/market/candles?symbol=${ticker.symbol}&tf=${timeframe}&from=${from.toISOString()}`
       )
       if (!res.ok) throw new Error("Error cargando velas")
-      const data = (await res.json()) as { time: string; open: number; high: number; low: number; close: number; volume: number }[]
+      const data = (await res.json()) as {
+        time: string; open: number; high: number; low: number; close: number; volume: number
+      }[]
 
       setCandles(
         data.map((c) => ({
           time: Math.floor(new Date(c.time).getTime() / 1000),
-          open: c.open,
-          high: c.high,
-          low: c.low,
-          close: c.close,
-          volume: c.volume,
+          open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume,
         }))
       )
     } catch (e) {
@@ -79,6 +77,18 @@ export function ChartPage({ ticker, tickers }: Props) {
   }, [ticker.symbol, timeframe])
 
   useEffect(() => { fetchCandles() }, [fetchCandles])
+
+  const handleApplyAnalysis = (id: string, name: string, indicators: IndicatorConfig[]) => {
+    setActiveAnalysisId(id)
+    setActiveAnalysisName(name)
+    setActiveIndicators(indicators)
+  }
+
+  const handleRemoveAnalysis = () => {
+    setActiveAnalysisId(null)
+    setActiveAnalysisName(null)
+    setActiveIndicators([])
+  }
 
   const filtered = tickers.filter(
     (t) =>
@@ -122,15 +132,25 @@ export function ChartPage({ ticker, tickers }: Props) {
         </div>
 
         {/* Ticker name */}
-        <span className="text-sm text-slate-400 hidden sm:block">{ticker.name}</span>
+        <span className="hidden text-sm text-slate-400 sm:block">{ticker.name}</span>
         {hoveredPrice !== null && (
           <span className="font-mono text-sm text-slate-300">${hoveredPrice.toFixed(2)}</span>
         )}
 
         <div className="flex-1" />
 
+        {/* Analysis selector */}
+        <AnalysisSelector
+          analyses={analyses}
+          tickerId={ticker.id}
+          activeAnalysisId={activeAnalysisId}
+          activeAnalysisName={activeAnalysisName}
+          onApply={handleApplyAnalysis}
+          onRemove={handleRemoveAnalysis}
+        />
+
         {/* Timeframe */}
-        <div className="flex rounded-md border border-slate-700 overflow-hidden">
+        <div className="flex overflow-hidden rounded-md border border-slate-700">
           {TIMEFRAMES.map((tf) => (
             <button
               key={tf}
@@ -146,18 +166,35 @@ export function ChartPage({ ticker, tickers }: Props) {
 
         {/* Drawing mode */}
         <button
-          onClick={() => setDrawingMode((m) => m === "horizontal" ? "none" : "horizontal")}
-          title="Dibujar línea horizontal (S/R)"
+          onClick={() => setDrawingMode((m) => (m === "horizontal" ? "none" : "horizontal"))}
+          title="Dibujar línea horizontal"
           className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-            drawingMode === "horizontal" ? "bg-amber-600 text-white" : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+            drawingMode === "horizontal"
+              ? "bg-amber-600 text-white"
+              : "bg-slate-800 text-slate-400 hover:bg-slate-700"
           }`}
         >
           ─ H-Line
         </button>
-
-        {/* Indicators */}
-        <IndicatorPanel state={indicators} onChange={setIndicators} />
       </div>
+
+      {/* Indicator badge */}
+      {activeIndicators.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {activeIndicators.map((ind) => (
+            <span
+              key={ind.localId}
+              className="inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-800 px-2 py-0.5 text-xs text-slate-300"
+            >
+              <span
+                className="inline-block h-2 w-2 rounded-full"
+                style={{ backgroundColor: ind.visual.color }}
+              />
+              {ind.tipo}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Chart area */}
       {loading && (
@@ -170,9 +207,13 @@ export function ChartPage({ ticker, tickers }: Props) {
         <ChartContainer
           candles={candles}
           tickerId={ticker.id}
-          indicators={indicators}
+          symbol={ticker.symbol}
+          timeframe={timeframe}
+          indicators={activeIndicators}
           drawingMode={drawingMode}
           onPriceHover={setHoveredPrice}
+          loadDrawings={loadDrawings}
+          saveDrawings={saveDrawings}
         />
       )}
       {!loading && !error && candles.length === 0 && (
