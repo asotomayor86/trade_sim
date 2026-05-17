@@ -120,10 +120,26 @@ export function ChartPage({ ticker, tickers, analyses, initialLastApplied, strat
       t.name.toLowerCase().includes(search.toLowerCase())
   )
 
+  // H-Line toggle node passed to ChartContainer's right slot
+  const hLineButton = (
+    <button
+      onClick={() => setDrawingMode((m) => (m === "horizontal" ? "none" : "horizontal"))}
+      title="Dibujar línea horizontal"
+      className={`rounded px-2.5 py-0.5 text-xs font-medium transition-colors ${
+        drawingMode === "horizontal"
+          ? "bg-amber-600/80 text-white"
+          : "text-slate-600 hover:text-slate-400"
+      }`}
+    >
+      ─ H-Line
+    </button>
+  )
+
   return (
-    <div className="flex h-full flex-col gap-3">
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="flex h-full flex-col gap-2">
+
+      {/* ── Row 1: ticker + timeframe ─────────────────────────── */}
+      <div className="flex items-center gap-3">
         {/* Ticker selector */}
         <div className="relative">
           <input
@@ -131,17 +147,14 @@ export function ChartPage({ ticker, tickers, analyses, initialLastApplied, strat
             onChange={(e) => setSearch(e.target.value)}
             onFocus={() => setSearch("")}
             onBlur={() => setTimeout(() => setSearch(""), 200)}
-            className="w-32 rounded-md border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm font-mono font-bold text-white focus:border-blue-500 focus:outline-none"
+            className="w-28 rounded-md border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm font-mono font-bold text-white focus:border-blue-500 focus:outline-none"
           />
           {search && (
             <div className="absolute left-0 top-full z-30 mt-1 max-h-64 w-64 overflow-y-auto rounded-lg border border-slate-700 bg-slate-900 shadow-xl">
               {filtered.slice(0, 30).map((t) => (
                 <button
                   key={t.id}
-                  onMouseDown={() => {
-                    setSearch("")
-                    router.push(`/app/chart/${t.symbol}`)
-                  }}
+                  onMouseDown={() => { setSearch(""); router.push(`/app/chart/${t.symbol}`) }}
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-slate-800"
                 >
                   <span className="font-mono font-semibold text-white">{t.symbol}</span>
@@ -155,42 +168,9 @@ export function ChartPage({ ticker, tickers, analyses, initialLastApplied, strat
           )}
         </div>
 
-        {/* Ticker name */}
-        <span className="hidden text-sm text-slate-400 sm:block">{ticker.name}</span>
-        {hoveredPrice !== null && (
-          <span className="font-mono text-sm text-slate-300">${hoveredPrice.toFixed(2)}</span>
-        )}
+        <span className="hidden text-sm text-slate-500 sm:block">{ticker.name}</span>
 
         <div className="flex-1" />
-
-        {/* Analysis selector */}
-        <AnalysisSelector
-          analyses={analyses}
-          tickerId={ticker.id}
-          activeAnalysisId={activeAnalysisId}
-          activeAnalysisName={activeAnalysisName}
-          onApply={handleApplyAnalysis}
-          onRemove={handleRemoveAnalysis}
-        />
-
-        {/* Strategy selector (only shown when an analysis is active and it has strategies) */}
-        {activeAnalysisId && activeStrategies.length > 0 && (
-          <StrategySelector
-            strategies={activeStrategies}
-            activeStrategyId={activeStrategy?.id ?? null}
-            onSelect={setActiveStrategy}
-          />
-        )}
-
-        {/* Launch order button */}
-        {activeStrategy && (
-          <button
-            onClick={() => setShowOrderModal(true)}
-            className="rounded-md bg-emerald-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-600"
-          >
-            ⚡ Lanzar orden
-          </button>
-        )}
 
         {/* Timeframe */}
         <div className="flex overflow-hidden rounded-md border border-slate-700">
@@ -206,45 +186,54 @@ export function ChartPage({ ticker, tickers, analyses, initialLastApplied, strat
             </button>
           ))}
         </div>
-
-        {/* Drawing mode */}
-        <button
-          onClick={() => setDrawingMode((m) => (m === "horizontal" ? "none" : "horizontal"))}
-          title="Dibujar línea horizontal"
-          className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-            drawingMode === "horizontal"
-              ? "bg-amber-600 text-white"
-              : "bg-slate-800 text-slate-400 hover:bg-slate-700"
-          }`}
-        >
-          ─ H-Line
-        </button>
       </div>
 
-      {/* Indicator badge */}
-      {activeIndicators.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {activeIndicators.map((ind) => (
-            <span
-              key={ind.localId}
-              className="inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-800 px-2 py-0.5 text-xs text-slate-300"
-            >
-              <span
-                className="inline-block h-2 w-2 rounded-full"
-                style={{ backgroundColor: ind.visual.color }}
-              />
-              {ind.tipo}
-            </span>
-          ))}
-        </div>
-      )}
+      {/* ── Row 2: analysis + strategy + launch ───────────────── */}
+      <div className="flex flex-wrap items-center gap-2">
+        <AnalysisSelector
+          analyses={analyses}
+          tickerId={ticker.id}
+          activeAnalysisId={activeAnalysisId}
+          activeAnalysisName={activeAnalysisName}
+          onApply={handleApplyAnalysis}
+          onRemove={handleRemoveAnalysis}
+        />
 
-      {/* Chart area */}
+        {activeAnalysisId && activeStrategies.length > 0 && (
+          <StrategySelector
+            strategies={activeStrategies}
+            activeStrategyId={activeStrategy?.id ?? null}
+            onSelect={setActiveStrategy}
+          />
+        )}
+
+        {activeStrategy && (
+          <button
+            onClick={() => setShowOrderModal(true)}
+            className="rounded-md bg-emerald-800/70 px-3 py-1.5 text-sm font-medium text-emerald-300 hover:bg-emerald-700/70"
+          >
+            ⚡ Lanzar orden
+          </button>
+        )}
+
+        {/* Indicator badges */}
+        {activeIndicators.map((ind) => (
+          <span
+            key={ind.localId}
+            className="inline-flex items-center gap-1 rounded-full border border-slate-700/50 bg-slate-800/50 px-2 py-0.5 text-xs text-slate-400"
+          >
+            <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: ind.visual.color }} />
+            {ind.tipo}
+          </span>
+        ))}
+      </div>
+
+      {/* ── Chart ─────────────────────────────────────────────── */}
       {loading && (
-        <div className="flex h-48 items-center justify-center text-slate-400">Cargando velas…</div>
+        <div className="flex h-48 items-center justify-center text-slate-500">Cargando velas…</div>
       )}
       {error && (
-        <div className="rounded-md bg-red-900/30 px-4 py-3 text-sm text-red-400">{error}</div>
+        <div className="rounded-md bg-red-900/20 px-4 py-3 text-sm text-red-400">{error}</div>
       )}
       {!loading && !error && candles.length > 0 && (
         <ChartContainer
@@ -258,26 +247,16 @@ export function ChartPage({ ticker, tickers, analyses, initialLastApplied, strat
           onPriceHover={setHoveredPrice}
           loadDrawings={loadDrawings}
           saveDrawings={saveDrawings}
+          rightSlot={hLineButton}
         />
       )}
       {!loading && !error && candles.length === 0 && (
-        <div className="flex h-48 items-center justify-center text-slate-400">
+        <div className="flex h-48 items-center justify-center text-slate-500">
           Sin datos de velas. El cron de precios aún no ha descargado el histórico de este ticker.
         </div>
       )}
 
-      {/* Launch order modal (from toolbar) */}
-      {showOrderModal && activeStrategy && (
-        <LaunchOrderModal
-          strategy={activeStrategy}
-          tickerId={ticker.id}
-          tickerSymbol={ticker.symbol}
-          currentPrice={hoveredPrice}
-          onClose={() => setShowOrderModal(false)}
-        />
-      )}
-
-      {/* Strategy suggestions panel */}
+      {/* ── Strategy suggestions ──────────────────────────────── */}
       {suggestions.length > 0 && (
         <StrategySuggestions
           suggestions={suggestions}
@@ -285,6 +264,17 @@ export function ChartPage({ ticker, tickers, analyses, initialLastApplied, strat
           tickerId={ticker.id}
           tickerSymbol={ticker.symbol}
           chartRef={chartRef}
+        />
+      )}
+
+      {/* Launch order modal */}
+      {showOrderModal && activeStrategy && (
+        <LaunchOrderModal
+          strategy={activeStrategy}
+          tickerId={ticker.id}
+          tickerSymbol={ticker.symbol}
+          currentPrice={hoveredPrice}
+          onClose={() => setShowOrderModal(false)}
         />
       )}
     </div>

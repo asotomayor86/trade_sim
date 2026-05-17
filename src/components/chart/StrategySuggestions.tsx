@@ -66,12 +66,12 @@ export function StrategySuggestions({ suggestions, strategies, tickerId, tickerS
   if (suggestions.length === 0) return null
 
   return (
-    <div className="mt-2 rounded-lg border border-slate-700 bg-slate-900/60">
-      <p className="border-b border-slate-800 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+    <div className="rounded border border-slate-800 bg-slate-900/30">
+      <p className="border-b border-slate-800/60 px-3 py-1.5 text-xs font-medium uppercase tracking-widest text-slate-600">
         Estrategias aplicables
       </p>
 
-      <div className="divide-y divide-slate-800/60">
+      <div className="divide-y divide-slate-800/30">
         {suggestions.map((row) => {
           const isFixed = fixedLines.has(row.code)
           const hasPrice = row.suggestedPrice !== null
@@ -82,28 +82,34 @@ export function StrategySuggestions({ suggestions, strategies, tickerId, tickerS
               onClick={() => handleRowClick(row)}
               onMouseEnter={() => handleMouseEnter(row)}
               onMouseLeave={() => handleMouseLeave(row)}
-              className={`flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
-                hasPrice ? "cursor-pointer hover:bg-slate-800/60" : "opacity-60"
-              } ${isFixed ? "bg-slate-800/40" : ""}`}
+              className={`flex items-center gap-3 px-3 py-2 text-xs transition-colors ${
+                hasPrice ? "cursor-pointer hover:bg-slate-800/30" : "opacity-40"
+              } ${isFixed ? "bg-slate-800/20" : ""}`}
             >
-              {/* Fixed indicator */}
-              <span className={`w-2 h-2 rounded-full shrink-0 ${isFixed ? "bg-amber-400" : "bg-transparent"}`} />
+              {/* Fixed indicator dot */}
+              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isFixed ? "bg-amber-500" : "bg-slate-700"}`} />
 
-              {/* Code + suffix */}
-              <span className={`font-mono font-bold w-20 shrink-0 ${SUFFIX_COLOR[row.suffix] ?? "text-slate-300"}`}>
+              {/* Code */}
+              <span className={`w-20 shrink-0 font-mono font-semibold ${
+                isFixed
+                  ? SUFFIX_COLOR[row.suffix] ?? "text-slate-400"
+                  : "text-slate-500"
+              }`}>
                 {row.code}
               </span>
 
               {/* Name */}
-              <span className="truncate text-slate-400 flex-1 text-xs">{row.name}</span>
+              <span className="flex-1 truncate text-slate-600">{row.name}</span>
 
               {/* Suggested price */}
-              <span className={`font-mono shrink-0 w-24 text-right ${
-                hasPrice ? "text-slate-200" : "text-slate-600"
+              <span className={`w-24 shrink-0 text-right font-mono ${
+                hasPrice
+                  ? isFixed ? "text-slate-300" : "text-slate-500"
+                  : "text-slate-700"
               }`}>
                 {hasPrice
                   ? `$${row.suggestedPrice!.toFixed(2)}`
-                  : <span title={row.reason ?? ""}>{row.reason ? `— ${row.reason}` : "—"}</span>
+                  : <span title={row.reason ?? "—"}>{row.reason ?? "—"}</span>
                 }
               </span>
 
@@ -111,9 +117,9 @@ export function StrategySuggestions({ suggestions, strategies, tickerId, tickerS
               <button
                 onClick={(e) => handleLaunch(e, row)}
                 disabled={!hasPrice}
-                className="shrink-0 rounded bg-emerald-800 px-2.5 py-1 text-xs font-semibold text-emerald-200 hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-30"
+                className="shrink-0 rounded px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-800/60 hover:text-emerald-400 disabled:cursor-not-allowed disabled:opacity-20"
               >
-                ⚡ Lanzar
+                ⚡
               </button>
             </div>
           )

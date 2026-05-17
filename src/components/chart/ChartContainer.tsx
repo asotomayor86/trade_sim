@@ -44,11 +44,12 @@ interface Props {
   onPriceHover?: (price: number | null) => void
   loadDrawings: (tickerId: string) => Promise<DrawingData[]>
   saveDrawings: (tickerId: string, drawings: DrawingData[]) => Promise<void>
+  rightSlot?: React.ReactNode
 }
 
 export const ChartContainer = forwardRef<ChartHandle, Props>(function ChartContainer({
   candles, tickerId, symbol, timeframe, indicators, drawingMode, onPriceHover,
-  loadDrawings, saveDrawings,
+  loadDrawings, saveDrawings, rightSlot,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -348,23 +349,28 @@ export const ChartContainer = forwardRef<ChartHandle, Props>(function ChartConta
   }, [])
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-1.5">
       <div ref={containerRef} className="w-full overflow-hidden rounded-lg" />
-      <div className="flex items-center gap-2 text-xs text-slate-400">
-        <span>{drawings.length} línea{drawings.length !== 1 ? "s" : ""}</span>
-        {drawings.length > 0 && (
-          <>
-            <button onClick={handleClearDrawings} className="rounded px-2 py-1 hover:bg-slate-800 hover:text-white">
-              Borrar todas
-            </button>
-            <button
-              onClick={handleSaveDrawings}
-              className="rounded bg-blue-600 px-2 py-1 text-white hover:bg-blue-500"
-            >
-              {saved ? "✓ Guardado" : "Guardar dibujos"}
-            </button>
-          </>
-        )}
+      <div className="flex items-center justify-between gap-2">
+        {/* Left: drawing controls */}
+        <div className="flex items-center gap-2 text-xs text-slate-500">
+          {drawings.length > 0 && (
+            <>
+              <span>{drawings.length} línea{drawings.length !== 1 ? "s" : ""}</span>
+              <button onClick={handleClearDrawings} className="rounded px-2 py-0.5 hover:bg-slate-800 hover:text-slate-300">
+                Borrar
+              </button>
+              <button
+                onClick={handleSaveDrawings}
+                className="rounded bg-slate-700 px-2 py-0.5 text-slate-300 hover:bg-slate-600"
+              >
+                {saved ? "✓ Guardado" : "Guardar"}
+              </button>
+            </>
+          )}
+        </div>
+        {/* Right: slot for parent controls (H-Line, etc.) */}
+        {rightSlot}
       </div>
     </div>
   )
